@@ -97,6 +97,7 @@ export const MOCK_EQUIPMENT: Equipment[] = [
     category: 'Elektronik',
     condition: 'Baik', 
     isAvailable: true,
+    serialNumber: 'EPS-X1-882910'
   },
   { 
     id: 'FTI-CBL-005', 
@@ -105,6 +106,7 @@ export const MOCK_EQUIPMENT: Equipment[] = [
     category: 'Aksesoris',
     condition: 'Baik', 
     isAvailable: false,
+    serialNumber: 'N/A'
   },
   { 
     id: 'FTI-CAM-012', 
@@ -113,6 +115,7 @@ export const MOCK_EQUIPMENT: Equipment[] = [
     category: 'Multimedia',
     condition: 'Rusak Ringan', 
     isAvailable: true,
+    serialNumber: 'CN-600D-2231'
   },
   { 
     id: 'FTI-IOT-099', 
@@ -121,6 +124,7 @@ export const MOCK_EQUIPMENT: Equipment[] = [
     category: 'IoT',
     condition: 'Baik', 
     isAvailable: true,
+    serialNumber: 'ARD-UNO-R3-001'
   },
   { 
     id: 'FTI-AUD-002', 
@@ -129,6 +133,7 @@ export const MOCK_EQUIPMENT: Equipment[] = [
     category: 'Audio',
     condition: 'Rusak Berat', 
     isAvailable: false,
+    serialNumber: 'SHURE-WL-99'
   },
 ];
 

@@ -79,6 +79,7 @@ CREATE TABLE equipment (
     category VARCHAR(50),                -- Elektronik, Aksesoris, dll
     condition VARCHAR(20) DEFAULT 'Baik',-- 'Baik', 'Rusak Ringan', 'Rusak Berat'
     is_available BOOLEAN DEFAULT TRUE,
+    serial_number VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

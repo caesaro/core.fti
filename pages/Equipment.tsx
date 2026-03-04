@@ -236,9 +236,9 @@ const Equipment: React.FC<EquipmentProps> = ({ role, showToast }) => {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               >
-                <option value="All">Semua Status</option>
-                <option value="Dipinjam">Dipinjam</option>
-                <option value="Dikembalikan">Dikembalikan</option>
+                <option className="bg-white dark:bg-gray-800" value="All">Semua Status</option>
+                <option className="bg-white dark:bg-gray-800" value="Dipinjam">Dipinjam</option>
+                <option className="bg-white dark:bg-gray-800" value="Dikembalikan">Dikembalikan</option>
               </select>
            </div>
         </div>

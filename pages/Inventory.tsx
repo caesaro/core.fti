@@ -17,7 +17,7 @@ const Inventory: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState<Partial<Equipment>>({
-    id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true
+    id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: ''
   });
 
   // Modal State for Delete Confirmation
@@ -32,7 +32,8 @@ const Inventory: React.FC = () => {
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.ukswCode.toLowerCase().includes(searchTerm.toLowerCase());
+                          item.ukswCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (item.serialNumber && item.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCondition = filterCondition === 'All' || item.condition === filterCondition;
     const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
     return matchesSearch && matchesCondition && matchesCategory;
@@ -51,7 +52,7 @@ const Inventory: React.FC = () => {
       setAddMode('manual');
     } else {
       setEditingItem(null);
-      setFormData({ id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true });
+      setFormData({ id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: '' });
       setAddMode('manual');
     }
     setIsModalOpen(true);
@@ -84,7 +85,8 @@ const Inventory: React.FC = () => {
       { header: 'ukswCode', key: 'ukswCode', width: 20 },
       { header: 'name', key: 'name', width: 30 },
       { header: 'category', key: 'category', width: 15 },
-      { header: 'condition', key: 'condition', width: 15 }
+      { header: 'condition', key: 'condition', width: 15 },
+      { header: 'serialNumber', key: 'serialNumber', width: 20 }
     ];
 
     // Add sample row
@@ -93,7 +95,8 @@ const Inventory: React.FC = () => {
       ukswCode: "UKSW-NEW-001",
       name: "Barang Baru",
       category: "Elektronik",
-      condition: "Baik"
+      condition: "Baik",
+      serialNumber: "SN12345678"
     });
 
     // Generate buffer
@@ -157,7 +160,8 @@ const Inventory: React.FC = () => {
                           name: String(rowData.name),
                           category: rowData.category ? String(rowData.category) : 'Umum',
                           condition: rowData.condition ? String(rowData.condition) as any : 'Baik',
-                          isAvailable: true
+                          isAvailable: true,
+                          serialNumber: rowData.serialNumber ? String(rowData.serialNumber) : ''
                       });
                   }
               }
@@ -221,7 +225,7 @@ const Inventory: React.FC = () => {
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input 
               type="text" 
-              placeholder="Cari nama, Kode FTI, atau Kode UKSW..." 
+              placeholder="Cari nama, Kode FTI, UKSW, atau SN..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
@@ -282,6 +286,7 @@ const Inventory: React.FC = () => {
                         <tr>
                             <th className="px-6 py-4">Kode FTI</th>
                             <th className="px-6 py-4">Kode UKSW</th>
+                            <th className="px-6 py-4">Serial Number</th>
                             <th className="px-6 py-4">Nama Barang</th>
                             <th className="px-6 py-4">Kategori</th>
                             <th className="px-6 py-4">Kondisi</th>
@@ -294,6 +299,7 @@ const Inventory: React.FC = () => {
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">{item.id}</td>
                                 <td className="px-6 py-4 font-mono text-xs text-gray-500">{item.ukswCode}</td>
+                                <td className="px-6 py-4 font-mono text-xs text-gray-500">{item.serialNumber || '-'}</td>
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{item.name}</td>
                                 <td className="px-6 py-4 text-gray-500">{item.category}</td>
                                 <td className="px-6 py-4">
@@ -419,6 +425,16 @@ const Inventory: React.FC = () => {
                         />
                     </div>
                     <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Serial Number</label>
+                        <input 
+                            type="text" 
+                            value={formData.serialNumber || ''} 
+                            onChange={e => setFormData({...formData, serialNumber: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
+                            placeholder="SN-XXXXX"
+                        />
+                    </div>
+                    <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori</label>
                         <input 
                             type="text" required 
@@ -473,7 +489,7 @@ const Inventory: React.FC = () => {
                             <AlertCircle className="w-4 h-4 mr-2" /> Petunjuk Import
                         </h4>
                         <p className="text-xs text-blue-700 dark:text-blue-400 mb-3">
-                            Gunakan file Excel (.xlsx) dengan header: <code>id, ukswCode, name, category, condition</code>.
+                            Gunakan file Excel (.xlsx) dengan header: <code>id, ukswCode, name, category, condition, serialNumber</code>.
                             Pastikan <strong>id</strong> (Kode FTI) unik dan belum ada di database.
                         </p>
                         <button 

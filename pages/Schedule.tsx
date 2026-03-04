@@ -427,16 +427,22 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
             <div className="p-6 animate-fade-in-up">
                {/* Calendar Header */}
                <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
-                   <div className="flex items-center gap-4">
-                       <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center capitalize">
-                          {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-                          {isLoading && <Loader2 className="w-4 h-4 ml-3 animate-spin text-blue-500"/>}
-                       </h3>
-                       <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                           <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded-md transition-colors"><ChevronLeft className="w-4 h-4"/></button>
-                           <button onClick={goToToday} className="px-2 text-xs font-medium hover:bg-white dark:hover:bg-gray-600 rounded-md transition-colors">Hari Ini</button>
-                           <button onClick={() => changeMonth(1)} className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded-md transition-colors"><ChevronRight className="w-4 h-4"/></button>
+                   <div className="flex items-center gap-3">
+                       <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
+                           <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
+                               <ChevronLeft className="w-5 h-5"/>
+                           </button>
+                           <span className="px-4 text-base font-bold text-gray-900 dark:text-white capitalize min-w-[160px] text-center select-none">
+                               {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                           </span>
+                           <button onClick={() => changeMonth(1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
+                               <ChevronRight className="w-5 h-5"/>
+                           </button>
                        </div>
+                       {isLoading && <Loader2 className="w-5 h-5 animate-spin text-blue-500"/>}
+                       <button onClick={goToToday} className="text-sm text-blue-600 hover:underline font-medium ml-2">
+                           Hari Ini
+                       </button>
                    </div>
                    <div className="text-sm text-gray-500 dark:text-gray-400">
                       Total: {events.length} Kegiatan
