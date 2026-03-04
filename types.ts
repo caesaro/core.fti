@@ -48,10 +48,12 @@ export interface Equipment {
 
 export interface Loan {
   id: string;
+  transactionId: string; // Grouping ID
   equipmentId: string;
   equipmentName: string;
   borrowerName: string;
-  officerName: string; // Petugas
+  borrowOfficer: string; // Petugas Peminjaman
+  returnOfficer?: string; // Petugas Pengembalian
   guarantee: string; // KTM / KTP
   borrowDate: string;
   borrowTime?: string; // Jam Peminjaman

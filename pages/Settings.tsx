@@ -13,11 +13,11 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
 
   // Database State
   const [dbConfig, setDbConfig] = useState({
-    host: 'localhost',
+    host: '192.168.68.62',
     port: '5432',
-    database: 'silab_fti',
-    username: 'postgres',
-    password: '',
+    database: 'dbcorefti',
+    username: 'corefti',
+    password: 'c0r3ft1',
   });
 
   // SSO State

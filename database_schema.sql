@@ -6,14 +6,12 @@
 -- Menyimpan data semua pengguna (Mahasiswa, Dosen, Admin, Teknisi)
 CREATE TABLE users (
     id VARCHAR(50) PRIMARY KEY,          -- Primary Key (bisa UUID atau String ID)
-    name VARCHAR(100) NOT NULL,
+    nama VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255),               -- Hash password untuk login
     role VARCHAR(20) NOT NULL,           -- Enum: 'ADMIN', 'USER', 'LABORAN', 'TEKNISI'
     identifier VARCHAR(50),              -- NIM atau NIDN
-    department VARCHAR(100),             -- Program Studi / Unit
-    phone VARCHAR(20),                   -- Nomor Telepon/WA (dari Profile)
-    address TEXT,                        -- Alamat Domisili (dari Profile)
+    telepon VARCHAR(20),                   -- Nomor Telepon/WA (dari Profile)
     avatar_image BYTEA,                  -- Foto Profil (Binary Data)
     status VARCHAR(20) DEFAULT 'Aktif',  -- 'Aktif', 'Non-Aktif', 'Suspended'
     last_login TIMESTAMP,
@@ -26,11 +24,11 @@ CREATE TABLE users (
 CREATE TABLE rooms (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    description TEXT,
-    capacity INT NOT NULL,
+    deskripsi TEXT,
+    kapasitas INT NOT NULL,
     pic VARCHAR(100),                    -- Nama Penanggung Jawab (bisa teks atau relasi ke users)
     image_url TEXT,                      -- URL gambar 360 atau thumbnail
-    facilities TEXT[],                   -- Array of Strings (Fitur khas PostgreSQL)
+    fasilitas TEXT[],                   -- Array of Strings (Fitur khas PostgreSQL)
     google_calendar_url TEXT,            -- Public Embed URL Google Calendar
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -44,12 +42,12 @@ CREATE TABLE bookings (
     room_id VARCHAR(50) NOT NULL,
     user_id VARCHAR(50) NOT NULL,        -- User yang melakukan booking
     
-    responsible_person VARCHAR(100) NOT NULL, -- Nama Penanggung Jawab Kegiatan
+    penanggung_jawab VARCHAR(100) NOT NULL, -- Nama Penanggung Jawab Kegiatan
     contact_person VARCHAR(50) NOT NULL,      -- No HP/WA
-    purpose TEXT NOT NULL,                    -- Keperluan/Nama Kegiatan
+    keperluan TEXT NOT NULL,                    -- Keperluan/Nama Kegiatan
     
     status VARCHAR(20) DEFAULT 'PENDING',     -- 'PENDING', 'APPROVED', 'REJECTED'
-    proposal_file BYTEA,                      -- File PDF (Binary Data)
+    file_proposal TEXT,                       -- URL/Path ke file PDF (Lebih ringan daripada BYTEA)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -72,50 +70,78 @@ CREATE TABLE booking_schedules (
 
 -- 4. Tabel Equipment
 -- Data barang inventaris
-CREATE TABLE equipment (
+CREATE TABLE inventory (
     id VARCHAR(50) PRIMARY KEY,          -- Kode FTI (Primary Key)
     uksw_code VARCHAR(50),               -- Kode Universitas UKSW
-    name VARCHAR(100) NOT NULL,
-    category VARCHAR(50),                -- Elektronik, Aksesoris, dll
-    condition VARCHAR(20) DEFAULT 'Baik',-- 'Baik', 'Rusak Ringan', 'Rusak Berat'
+    nama VARCHAR(100) NOT NULL,
+    kategori VARCHAR(50),                -- Elektronik, Aksesoris, dll
+    kondisi VARCHAR(20) DEFAULT 'Baik',-- 'Baik', 'Rusak Ringan', 'Rusak Berat'
     is_available BOOLEAN DEFAULT TRUE,
     serial_number VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Tabel Loans
--- Transaksi peminjaman barang
+-- 5. Tabel Transactions
+-- Header peminjaman (Satu transaksi bisa memuat banyak barang)
+CREATE TABLE transactions (
+    id VARCHAR(50) PRIMARY KEY,
+    peminjam_identifier VARCHAR(50) NOT NULL, -- NIM/ID Peminjam
+    nama_peminjam VARCHAR(100) NOT NULL,
+    petugas_pinjam VARCHAR(100),
+    petugas_kembali VARCHAR(100),           -- Petugas yang melayani peminjaman
+    jaminan VARCHAR(50),                    -- Jaminan (KTM/KTP)
+    tgl_pinjam DATE NOT NULL,
+    waktu_pinjam TIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Tabel Loans (Detail Barang)
+-- Detail barang dalam satu transaksi
 -- Relasi: Many-to-One ke Equipment
 CREATE TABLE loans (
     id VARCHAR(50) PRIMARY KEY,
-    equipment_id VARCHAR(50) NOT NULL,
+    transaction_id VARCHAR(50) NOT NULL,      -- ID Transaksi untuk mengelompokkan banyak barang dalam 1 peminjaman
+    inventory_id VARCHAR(50) NOT NULL,
     
-    borrower_identifier VARCHAR(50) NOT NULL, -- NIM/ID Peminjam (bisa relasi ke users jika wajib login)
-    borrower_name VARCHAR(100) NOT NULL,
-    officer_name VARCHAR(100),                -- Petugas yang melayani
-    guarantee VARCHAR(50),                    -- Jaminan (KTM/KTP)
-    
-    borrow_date DATE NOT NULL,
-    borrow_time TIME,                         -- Jam Peminjaman
     actual_return_date DATE,                  -- Tanggal realisasi kembali
     actual_return_time TIME,                  -- Jam realisasi kembali
     status VARCHAR(20) DEFAULT 'Dipinjam',    -- 'Dipinjam', 'Dikembalikan', 'Terlambat'
+    petugas_pengembalian VARCHAR(100),        -- Petugas yang menerima pengembalian
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Definisi Foreign Key
     -- Menggunakan RESTRICT agar barang tidak bisa dihapus sembarangan jika masih ada history peminjaman
-    CONSTRAINT fk_loan_equipment FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE RESTRICT
+    CONSTRAINT fk_loan_transaction FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_loan_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE RESTRICT
+);
+
+-- 7. Tabel Notifications
+-- Menyimpan riwayat notifikasi untuk dashboard
+CREATE TABLE notifications (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(50),                 -- Opsional: Jika null berarti notifikasi global/admin
+    title VARCHAR(100) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(20) DEFAULT 'info',     -- 'info', 'success', 'warning', 'error'
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_notification_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Indexing untuk performa pencarian
 CREATE INDEX idx_booking_schedules_date ON booking_schedules(schedule_date);
 CREATE INDEX idx_bookings_status ON bookings(status);
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_equipment_uksw_code ON equipment(uksw_code);
+CREATE INDEX idx_inventory_uksw_code ON inventory(uksw_code);
 -- Indexing untuk Foreign Keys (Mempercepat JOIN)
 CREATE INDEX idx_bookings_room_id ON bookings(room_id);
 CREATE INDEX idx_bookings_user_id ON bookings(user_id);
-CREATE INDEX idx_loans_equipment_id ON loans(equipment_id);
+CREATE INDEX idx_loans_inventory_id ON loans(inventory_id);
+CREATE INDEX idx_loans_transaction_id ON loans(transaction_id);
+CREATE INDEX idx_transactions_peminjam ON transactions(peminjam_identifier);
+CREATE INDEX idx_transactions_tgl ON transactions(tgl_pinjam);

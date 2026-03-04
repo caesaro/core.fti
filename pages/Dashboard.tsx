@@ -1,12 +1,11 @@
-import React, { useMemo } from 'react';
-import { Role, BookingStatus } from '../types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Role, BookingStatus, Booking, Loan, Room, AppUser, Equipment } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { 
   Users, Calendar, AlertCircle, CheckCircle, Clock, 
   TrendingUp, Activity, ArrowRight, Package, FileText, 
   Shield, AlertTriangle, ChevronRight, Box, XCircle
 } from 'lucide-react';
-import { MOCK_BOOKINGS, MOCK_LOANS, MOCK_ROOMS, MOCK_USERS, MOCK_EQUIPMENT } from '../services/mockData';
 
 interface DashboardProps {
   role: Role;
@@ -44,66 +43,83 @@ const QuickActionCard: React.FC<{ title: string; icon: React.ElementType; color:
 
 const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   const isUser = role === Role.USER;
-  const MOCK_USER_ID = "672019001"; // ID simulasi untuk user login (sesuai App.tsx)
+  const LOGGED_IN_USER_ID = "672019001"; // ID simulasi untuk user login (sesuai App.tsx)
+
+  // Data states
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setBookings(api.getBookings());
+    // setLoans(api.getLoans());
+    // setRooms(api.getRooms());
+    // setUsers(api.getUsers());
+    // setEquipment(api.getEquipment());
+  }, []);
 
   // Calculate Statistics Dynamically
   const stats = useMemo(() => {
-    const totalBookings = MOCK_BOOKINGS.length;
-    const pendingBookings = MOCK_BOOKINGS.filter(b => b.status === BookingStatus.PENDING).length;
-    const activeLoans = MOCK_LOANS.filter(l => l.status === 'Dipinjam').length;
+    const totalBookings = bookings.length;
+    const pendingBookings = bookings.filter(b => b.status === BookingStatus.PENDING).length;
+    const activeLoans = loans.filter(l => l.status === 'Dipinjam').length;
     
     // Simple availability check: Rooms not booked today (ignoring time for simplicity in mock)
     const today = new Date().toLocaleDateString('en-CA');
     const bookedRoomIds = new Set(
-        MOCK_BOOKINGS
+        bookings
             .filter(b => b.date === today && b.status === BookingStatus.APPROVED)
             .map(b => b.roomId)
     );
-    const availableRooms = MOCK_ROOMS.length - bookedRoomIds.size;
+    const availableRooms = rooms.length - bookedRoomIds.size;
     
-    const totalUsers = MOCK_USERS.length;
-    const damagedEquipment = MOCK_EQUIPMENT.filter(e => e.condition !== 'Baik').length;
-    const totalEquipment = MOCK_EQUIPMENT.length;
+    const totalUsers = users.length;
+    const damagedEquipment = equipment.filter(e => e.condition !== 'Baik').length;
+    const totalEquipment = equipment.length;
 
     // User Specific Stats
-    const myBookings = MOCK_BOOKINGS.filter(b => b.userId === MOCK_USER_ID);
+    const myBookings = bookings.filter(b => b.userId === LOGGED_IN_USER_ID);
     const myPending = myBookings.filter(b => b.status === BookingStatus.PENDING).length;
     const myApproved = myBookings.filter(b => b.status === BookingStatus.APPROVED).length;
     const myRejected = myBookings.filter(b => b.status === BookingStatus.REJECTED).length;
 
     return { totalBookings, pendingBookings, activeLoans, availableRooms, totalUsers, damagedEquipment, totalEquipment, myBookings, myPending, myApproved, myRejected };
-  }, [isUser]);
+  }, [isUser, bookings, loans, rooms, users, equipment]);
 
   // Calculate Chart Data
   const barData = useMemo(() => {
-      return MOCK_ROOMS.map(room => ({
+      return rooms.map(room => ({
           name: room.name.split(' ').slice(0, 2).join(' '), // Shorten name for display
-          bookings: MOCK_BOOKINGS.filter(b => b.roomId === room.id).length
+          bookings: bookings.filter(b => b.roomId === room.id).length
       }));
-  }, []);
+  }, [rooms, bookings]);
 
   const pieData = useMemo(() => {
-      const approved = MOCK_BOOKINGS.filter(b => b.status === BookingStatus.APPROVED).length;
-      const pending = MOCK_BOOKINGS.filter(b => b.status === BookingStatus.PENDING).length;
-      const rejected = MOCK_BOOKINGS.filter(b => b.status === BookingStatus.REJECTED).length;
+      const approved = bookings.filter(b => b.status === BookingStatus.APPROVED).length;
+      const pending = bookings.filter(b => b.status === BookingStatus.PENDING).length;
+      const rejected = bookings.filter(b => b.status === BookingStatus.REJECTED).length;
 
       return [
           { name: 'Disetujui', value: approved, color: '#22c55e' },
           { name: 'Pending', value: pending, color: '#f59e0b' },
           { name: 'Ditolak', value: rejected, color: '#ef4444' },
       ];
-  }, []);
+  }, [bookings]);
 
   const equipmentConditionData = useMemo(() => {
-      const good = MOCK_EQUIPMENT.filter(e => e.condition === 'Baik').length;
-      const minor = MOCK_EQUIPMENT.filter(e => e.condition === 'Rusak Ringan').length;
-      const major = MOCK_EQUIPMENT.filter(e => e.condition === 'Rusak Berat').length;
+      const good = equipment.filter(e => e.condition === 'Baik').length;
+      const minor = equipment.filter(e => e.condition === 'Rusak Ringan').length;
+      const major = equipment.filter(e => e.condition === 'Rusak Berat').length;
       return [
           { name: 'Baik', value: good, color: '#22c55e' },
           { name: 'Rusak Ringan', value: minor, color: '#f59e0b' },
           { name: 'Rusak Berat', value: major, color: '#ef4444' },
       ];
-  }, []);
+  }, [equipment]);
 
   // --- RENDER FOR USER (MAHASISWA/DOSEN) ---
   if (isUser) {
@@ -203,10 +219,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard {role}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Overview of laboratory activities</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Ringkasan aktivitas laboratorium</p>
         </div>
         <div className="text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full">
-          Today: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          Hari ini: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
       </div>
 
@@ -225,7 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             icon={Package} 
             color="bg-blue-500" 
             subtext="Sedang dipinjam"
-            onClick={() => onNavigate?.('equipment')}
+            onClick={() => onNavigate?.('loans')}
         />
         <StatCard 
             title="Kondisi Inventaris" 
@@ -334,7 +350,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                   </button>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {MOCK_BOOKINGS.slice(0, 5).map((booking) => (
+                  {bookings.slice(0, 5).map((booking) => (
                       <div key={booking.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center justify-between">
                           <div className="flex items-center space-x-4">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${booking.status === BookingStatus.PENDING ? 'bg-yellow-100 text-yellow-600' : booking.status === BookingStatus.APPROVED ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
@@ -356,7 +372,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
           {/* Quick Actions Grid */}
           <div className="grid grid-cols-2 gap-4 content-start">
               <QuickActionCard title="Verifikasi Jadwal" icon={CheckCircle} color="bg-green-500" onClick={() => onNavigate?.('manage-bookings')} description="Setujui atau tolak pengajuan ruangan." />
-              <QuickActionCard title="Input Peminjaman" icon={Box} color="bg-blue-500" onClick={() => onNavigate?.('equipment')} description="Catat peminjaman barang baru." />
+              <QuickActionCard title="Input Peminjaman" icon={Box} color="bg-blue-500" onClick={() => onNavigate?.('loans')} description="Catat peminjaman barang baru." />
               <QuickActionCard title="Tambah User" icon={Users} color="bg-purple-500" onClick={() => onNavigate?.('users')} description="Registrasi pengguna baru." />
               <QuickActionCard title="Laporan Inventaris" icon={FileText} color="bg-orange-500" onClick={() => onNavigate?.('inventory')} description="Cek stok dan kondisi aset." />
           </div>

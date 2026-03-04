@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { MOCK_EQUIPMENT } from '../services/mockData';
+import React, { useState, useEffect, useRef } from 'react';
 import { Equipment } from '../types';
-import { Search, Plus, Filter, Edit, Trash2, X, Check, AlertCircle, Box, ChevronLeft, ChevronRight, Upload, FileSpreadsheet, Download } from 'lucide-react';
+import { Search, Plus, Filter, Edit, Trash2, X, Check, AlertCircle, Box, ChevronLeft, ChevronRight, Upload, FileSpreadsheet, Download, QrCode, Printer, Camera, Zap, ZapOff, FileText, ChevronDown } from 'lucide-react';
 import ExcelJS from 'exceljs';
+import QRCode from "react-qr-code";
+import { Html5Qrcode } from "html5-qrcode";
+import nocLogo from "../src/assets/noc.png";
 
 const Inventory: React.FC = () => {
-  const [items, setItems] = useState<Equipment[]>(MOCK_EQUIPMENT);
+  const [items, setItems] = useState<Equipment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCondition, setFilterCondition] = useState<'All' | 'Baik' | 'Rusak Ringan' | 'Rusak Berat'>('All');
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [itemsPerPage, setItemsPerPage] = useState<number>(5);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // Modal State for Form
   const [addMode, setAddMode] = useState<'manual' | 'excel'>('manual');
@@ -24,7 +27,26 @@ const Inventory: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+  // Modal State for QR Code
+  const [qrItem, setQrItem] = useState<Equipment | null>(null);
+
+  // Modal State for Detail View
+  const [viewDetailItem, setViewDetailItem] = useState<Equipment | null>(null);
+
+  // Scanner State
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+
   // Reset page when filters change
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setItems(api.getEquipment());
+  }, []);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterCondition, filterCategory, itemsPerPage]);
@@ -112,6 +134,59 @@ const Inventory: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleExportExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Data Inventaris');
+
+    worksheet.columns = [
+      { header: 'Kode FTI', key: 'id', width: 15 },
+      { header: 'Kode UKSW', key: 'ukswCode', width: 20 },
+      { header: 'Nama Barang', key: 'name', width: 30 },
+      { header: 'Kategori', key: 'category', width: 15 },
+      { header: 'Kondisi', key: 'condition', width: 15 },
+      { header: 'Serial Number', key: 'serialNumber', width: 20 },
+      { header: 'Status', key: 'status', width: 15 },
+    ];
+
+    filteredItems.forEach(item => {
+      worksheet.addRow({
+        id: item.id,
+        ukswCode: item.ukswCode,
+        name: item.name,
+        category: item.category,
+        condition: item.condition,
+        serialNumber: item.serialNumber,
+        status: item.isAvailable ? 'Tersedia' : 'Dipinjam'
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `inventaris_fti_${new Date().toISOString().split('T')[0]}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+    setIsExportOpen(false);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["Kode FTI", "Kode UKSW", "Nama Barang", "Kategori", "Kondisi", "Serial Number", "Status"];
+    const rows = filteredItems.map(item => [
+      item.id, item.ukswCode, item.name, item.category, item.condition, item.serialNumber || '-', item.isAvailable ? 'Tersedia' : 'Dipinjam'
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.map(c => `"${c}"`).join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `inventaris_fti_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsExportOpen(false);
+  };
+
   const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -196,6 +271,101 @@ const Inventory: React.FC = () => {
     }
   };
 
+  const handleShowQR = (item: Equipment) => {
+    setQrItem(item);
+  };
+
+  // --- Scanner Logic ---
+  useEffect(() => {
+    if (isScannerOpen) {
+        const html5QrCode = new Html5Qrcode("inventory-reader");
+        scannerRef.current = html5QrCode;
+    } else {
+        setIsScanning(false);
+        setTorchOn(false);
+        setTorchSupported(false);
+    }
+
+    return () => {
+        if (scannerRef.current) {
+            if (scannerRef.current.isScanning) {
+                scannerRef.current.stop().catch(() => {});
+            }
+            scannerRef.current.clear();
+            scannerRef.current = null;
+        }
+    };
+  }, [isScannerOpen]);
+
+  const handleStartScan = async () => {
+      if (!scannerRef.current) return;
+      try {
+          await scannerRef.current.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: 250, aspectRatio: 1.0 },
+              (decodedText) => {
+                  const foundItem = items.find(i => i.id === decodedText);
+                  if (foundItem) {
+                      handleStopScan();
+                      setIsScannerOpen(false);
+                      setViewDetailItem(foundItem);
+                  } else {
+                      alert(`Barang dengan ID ${decodedText} tidak ditemukan.`);
+                  }
+              },
+              () => {}
+          );
+          setIsScanning(true);
+
+          try {
+              const capabilities = scannerRef.current.getRunningTrackCapabilities();
+              if ('torch' in capabilities) {
+                  setTorchSupported(true);
+              }
+          } catch (e) {}
+      } catch (err) {
+          console.error("Error starting scanner:", err);
+          alert("Gagal memulai kamera.");
+      }
+  };
+
+  const handleStopScan = async () => {
+      if (scannerRef.current && isScanning) {
+          await scannerRef.current.stop();
+          setIsScanning(false);
+          setTorchOn(false);
+          setTorchSupported(false);
+      }
+  };
+
+  const toggleTorch = async () => {
+      if (!scannerRef.current || !isScanning) return;
+      try {
+          await scannerRef.current.applyVideoConstraints({
+              advanced: [{ torch: !torchOn } as any]
+          });
+          setTorchOn(!torchOn);
+      } catch (err) {
+          console.error(err);
+      }
+  };
+
+  const handleCloseScanner = async () => {
+      if (scannerRef.current && isScanning) {
+          try { await scannerRef.current.stop(); } catch (e) {}
+      }
+      setIsScanning(false);
+      setIsScannerOpen(false);
+  };
+
+  const handleEditFromDetail = () => {
+      if (viewDetailItem) {
+          const itemToEdit = viewDetailItem;
+          setViewDetailItem(null);
+          handleOpenModal(itemToEdit);
+      }
+  };
+
   const getConditionColor = (condition: string) => {
     switch(condition) {
         case 'Baik': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-900';
@@ -210,17 +380,61 @@ const Inventory: React.FC = () => {
 
   return (
     <div className="space-y-6">
-       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Print Report Header */}
+      <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
+        <div className="flex items-center justify-between mb-4">
+           <div className="flex items-center space-x-4">
+               <img src={nocLogo} alt="Logo FTI" className="w-24 h-24 object-contain" />
+               <div>
+                   <h1 className="text-2xl font-bold uppercase">Fakultas Teknologi Informasi</h1>
+                   <h2 className="text-xl">Universitas Kristen Satya Wacana</h2>
+                   <p className="text-sm">Jl. Dr. O. Notohamidjojo No.1 - 10, Blotongan, Kec. Sidorejo, Kota Salatiga, Jawa Tengah 50715</p>
+               </div>
+           </div>
+           <div className="text-right">
+               <h3 className="text-xl font-bold">LAPORAN INVENTARIS</h3>
+               <p className="text-sm">Dicetak: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+           </div>
+        </div>
+      </div>
+
+       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Inventaris Barang</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Kelola daftar aset dan barang FTI</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
-            <Plus className="w-4 h-4 mr-2" /> Tambah Barang
-        </button>
+        <div className="flex gap-2">
+            <button onClick={() => window.print()} className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
+                <Printer className="w-4 h-4 mr-2" /> Print
+            </button>
+            <div className="relative">
+                <button onClick={() => setIsExportOpen(!isExportOpen)} className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
+                    <Download className="w-4 h-4 mr-2" /> Export <ChevronDown className="w-4 h-4 ml-1" />
+                </button>
+                {isExportOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden animate-fade-in-up">
+                        <button onClick={handleExportExcel} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
+                            <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" /> Excel (.xlsx)
+                        </button>
+                        <button onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
+                            <FileText className="w-4 h-4 mr-2 text-blue-600" /> CSV
+                        </button>
+                        <button onClick={() => { window.print(); setIsExportOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center">
+                            <Printer className="w-4 h-4 mr-2 text-gray-600" /> PDF (Print)
+                        </button>
+                    </div>
+                )}
+            </div>
+            <button onClick={() => setIsScannerOpen(true)} className="px-3 py-2 bg-gray-800 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-gray-600 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
+                <Camera className="w-4 h-4 mr-2" /> Scan QR
+            </button>
+            <button onClick={() => handleOpenModal()} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
+                <Plus className="w-4 h-4 mr-2" /> Tambah Barang
+            </button>
+        </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col lg:flex-row gap-4 justify-between items-center">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col lg:flex-row gap-4 justify-between items-center print:hidden">
          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input 
@@ -234,7 +448,7 @@ const Inventory: React.FC = () => {
          
          <div className="flex flex-wrap gap-3 w-full lg:w-auto items-center justify-end">
              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Show</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Tampilkan</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => setItemsPerPage(Number(e.target.value))}
@@ -279,10 +493,10 @@ const Inventory: React.FC = () => {
          </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col print:shadow-none print:border-black print:border-2">
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-200 dark:border-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-200 dark:border-gray-700 print:bg-gray-200 print:text-black">
                         <tr>
                             <th className="px-6 py-4">Kode FTI</th>
                             <th className="px-6 py-4">Kode UKSW</th>
@@ -291,10 +505,10 @@ const Inventory: React.FC = () => {
                             <th className="px-6 py-4">Kategori</th>
                             <th className="px-6 py-4">Kondisi</th>
                             <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4 text-right">Aksi</th>
+                            <th className="px-6 py-4 text-right print:hidden">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-400">
                         {currentItems.length > 0 ? currentItems.map(item => (
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">{item.id}</td>
@@ -303,17 +517,18 @@ const Inventory: React.FC = () => {
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{item.name}</td>
                                 <td className="px-6 py-4 text-gray-500">{item.category}</td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getConditionColor(item.condition)}`}>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-medium border print:border-gray-400 ${getConditionColor(item.condition)}`}>
                                         {item.condition}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${item.isAvailable ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium print:border print:border-gray-400 ${item.isAvailable ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
                                         {item.isAvailable ? 'Tersedia' : 'Dipinjam'}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right">
+                                <td className="px-6 py-4 text-right print:hidden">
                                     <div className="flex justify-end space-x-2">
+                                        <button onClick={() => handleShowQR(item)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded dark:text-gray-400 dark:hover:bg-gray-700" title="Lihat QR Code"><QrCode className="w-4 h-4"/></button>
                                         <button onClick={() => handleOpenModal(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded dark:hover:bg-blue-900/30"><Edit className="w-4 h-4"/></button>
                                         <button onClick={() => handleDeleteClick(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded dark:hover:bg-red-900/30"><Trash2 className="w-4 h-4"/></button>
                                     </div>
@@ -331,7 +546,7 @@ const Inventory: React.FC = () => {
             </div>
             
             {/* Pagination Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
                <div className="text-sm text-gray-500 dark:text-gray-400">
                   Menampilkan <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length > 0 ? indexOfFirstItem + 1 : 0}</span> sampai <span className="font-medium text-gray-900 dark:text-white">{Math.min(indexOfLastItem, filteredItems.length)}</span> dari <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length}</span> data
                </div>
@@ -496,7 +711,7 @@ const Inventory: React.FC = () => {
                             onClick={downloadTemplate}
                             className="text-xs bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center w-fit"
                         >
-                            <Download className="w-3 h-3 mr-1.5" /> Download Template Excel
+                            <Download className="w-3 h-3 mr-1.5" /> Unduh Template Excel
                         </button>
                     </div>
 
@@ -548,6 +763,140 @@ const Inventory: React.FC = () => {
                        Ya, Hapus
                     </button>
                  </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Detail Item Modal */}
+      {viewDetailItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
+                    <Box className="w-5 h-5 mr-2 text-blue-600" />
+                    Detail Barang
+                 </h3>
+                 <button onClick={() => setViewDetailItem(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X className="w-5 h-5" />
+                 </button>
+              </div>
+              <div className="p-6 space-y-4">
+                  <div className="text-center mb-4">
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">{viewDetailItem.name}</h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{viewDetailItem.category}</p>
+                  </div>
+                  
+                  <div className="space-y-3 text-sm">
+                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                          <span className="text-gray-500 dark:text-gray-400">Kode FTI (ID)</span>
+                          <span className="font-mono font-medium text-gray-900 dark:text-white">{viewDetailItem.id}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                          <span className="text-gray-500 dark:text-gray-400">Kode UKSW</span>
+                          <span className="font-mono font-medium text-gray-900 dark:text-white">{viewDetailItem.ukswCode}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                          <span className="text-gray-500 dark:text-gray-400">Serial Number</span>
+                          <span className="font-mono font-medium text-gray-900 dark:text-white">{viewDetailItem.serialNumber || '-'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                          <span className="text-gray-500 dark:text-gray-400">Kondisi</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getConditionColor(viewDetailItem.condition)}`}>
+                              {viewDetailItem.condition}
+                          </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span className="text-gray-500 dark:text-gray-400">Status</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${viewDetailItem.isAvailable ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+                              {viewDetailItem.isAvailable ? 'Tersedia' : 'Dipinjam'}
+                          </span>
+                      </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <button onClick={() => setViewDetailItem(null)} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-sm">
+                          Tutup
+                      </button>
+                      <button onClick={handleEditFromDetail} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center justify-center">
+                          <Edit className="w-4 h-4 mr-2" /> Edit Barang
+                      </button>
+                  </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Scanner Modal */}
+      {isScannerOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-fade-in-up relative">
+                  <button 
+                    onClick={handleCloseScanner} 
+                    className="absolute top-4 right-4 z-10 bg-white dark:bg-gray-700 rounded-full p-1 text-gray-600 dark:text-gray-200 shadow-md"
+                  >
+                      <X className="w-5 h-5" />
+                  </button>
+                  <div className="p-6">
+                      <h3 className="text-lg font-bold text-center mb-4 text-gray-900 dark:text-white">Scan QR Code Barang</h3>
+                      
+                      <div className="relative w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-900 min-h-[250px] border border-gray-200 dark:border-gray-700">
+                          <div id="inventory-reader" className="w-full h-full"></div>
+                          {!isScanning && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 pointer-events-none">
+                                  <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                  <p className="text-sm">Kamera belum aktif</p>
+                              </div>
+                          )}
+                          {isScanning && torchSupported && (
+                              <button onClick={toggleTorch} className="absolute top-4 right-4 z-20 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm">
+                                  {torchOn ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+                              </button>
+                          )}
+                      </div>
+                      
+                      <div className="mt-4 flex justify-center">
+                          {!isScanning ? (
+                              <button onClick={handleStartScan} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors flex items-center">
+                                  <Camera className="w-4 h-4 mr-2" /> Mulai Scan
+                              </button>
+                          ) : (
+                              <button onClick={handleStopScan} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm transition-colors flex items-center">
+                                  <X className="w-4 h-4 mr-2" /> Stop Scan
+                              </button>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* QR Code Modal */}
+      {qrItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
+                    <QrCode className="w-5 h-5 mr-2 text-blue-600" />
+                    QR Code Barang
+                 </h3>
+                 <button onClick={() => setQrItem(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X className="w-5 h-5" />
+                 </button>
+              </div>
+              <div className="p-8 flex flex-col items-center justify-center bg-white">
+                  <div className="border-4 border-gray-900 p-2 rounded-lg">
+                    <QRCode 
+                        value={`${window.location.origin}/loans?scan=${qrItem.id}`} 
+                        size={200}
+                    />
+                  </div>
+                  <p className="mt-4 font-bold text-lg text-gray-900">{qrItem.id}</p>
+                  <p className="text-sm text-gray-500 text-center">{qrItem.name}</p>
+                  
+                  <button onClick={() => window.print()} className="mt-6 flex items-center text-sm text-blue-600 hover:underline print:hidden">
+                      <Printer className="w-4 h-4 mr-1" /> Cetak Label
+                  </button>
               </div>
            </div>
         </div>

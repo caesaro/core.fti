@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MOCK_ROOMS, MOCK_BOOKINGS, MOCK_LAB_STAFF } from '../services/mockData';
-import { Room, Role, BookingStatus, Booking } from '../types';
+import { Room, Role, BookingStatus, Booking, LabStaff } from '../types';
 import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight } from 'lucide-react';
 
 // Declare Pannellum for TypeScript
@@ -15,8 +14,12 @@ declare global {
 // Google API Config
 const CLIENT_ID = '828476305239-7hilvfjvadt8ndn9br7n1upmdso38ou8.apps.googleusercontent.com';
 const API_KEY = 'AIzaSyDMKoa430rirp8g8bBU3Xt-IE5EKZjiZWQ';
-const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
-const SCOPES = 'https://www.googleapis.com/auth/calendar.events.readonly';
+const DISCOVERY_DOCS = [
+  'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
+  'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
+];
+const SCOPES = 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/drive.file';
+const FTI_DRIVE_FOLDER_ID = ''; // Opsional: Isi ID Folder Google Drive FTI di sini agar file masuk ke folder spesifik
 
 interface RoomsProps {
   role: Role;
@@ -107,13 +110,12 @@ const Room360Thumbnail: React.FC<{ room: Room }> = ({ room }) => {
 };
 
 const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
-  const [rooms, setRooms] = useState<Room[]>(MOCK_ROOMS);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'capacity'>('name');
   
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail' | 'booking' | 'form'>('list');
-  const [bookings, setBookings] = useState<Booking[]>(MOCK_BOOKINGS);
 
   // CRUD & Form State
   const [isEditing, setIsEditing] = useState(false);
@@ -124,6 +126,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+  const [labStaff, setLabStaff] = useState<LabStaff[]>([]);
   // Booking Form State
   const [bookingForm, setBookingForm] = useState<Partial<Booking>>({
     purpose: '', responsiblePerson: '', contactPerson: '', proposalFile: ''
@@ -145,7 +148,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [isBookingLoading, setIsBookingLoading] = useState(false);
 
   // Filter Active Technicians for PIC Dropdown
-  const activeTechnicians = MOCK_LAB_STAFF.filter(s => s.type === 'Teknisi' && s.status === 'Aktif');
+  const activeTechnicians = labStaff.filter(s => s.type === 'Teknisi' && s.status === 'Aktif');
 
   // Filter & Sort Logic
   const filteredRooms = rooms
@@ -173,13 +176,21 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
         autoLoad: true,
         autoRotate: -2, // Rotate to the left at 2 degrees per second
         compass: true,
-        title: "360° View",
+        title: "Tampilan 360°",
         author: "Pannellum"
       });
     }
   }, [viewMode, selectedRoom]);
 
   // Initialize Google API
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setRooms(api.getRooms());
+    // setLabStaff(api.getLabStaff());
+    // setBookings(api.getBookings()); // Jika diperlukan di halaman ini
+  }, []);
+
   useEffect(() => {
     const loadScripts = () => {
       if (typeof window.gapi === 'undefined') {
@@ -371,12 +382,63 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     }
   };
 
+  const uploadFileToDrive = async (file: File) => {
+      // 1. Cek Token Akses
+      const accessToken = window.gapi.client.getToken()?.access_token;
+      if (!accessToken) {
+          throw new Error("Token akses Google tidak ditemukan. Mohon login ulang.");
+      }
+
+      // 2. Standarisasi Nama File
+      // Format: YYYY-MM-DD_NamaKegiatan_Proposal.pdf
+      const eventDate = bookingSchedules[0]?.date || new Date().toISOString().split('T')[0];
+      // Bersihkan nama kegiatan dari karakter aneh
+      const cleanPurpose = bookingForm.purpose
+          ? bookingForm.purpose.replace(/[^a-zA-Z0-9\s-_]/g, '').trim().replace(/\s+/g, '_')
+          : 'Kegiatan_FTI';
+      
+      const fileName = `${eventDate}_${cleanPurpose}_Proposal.pdf`;
+
+      // 3. Metadata File
+      const metadata: any = {
+          name: fileName,
+          mimeType: 'application/pdf',
+      };
+
+      // Jika ada Folder ID khusus (Shared Folder FTI), masukkan ke sana
+      if (FTI_DRIVE_FOLDER_ID) {
+          metadata.parents = [FTI_DRIVE_FOLDER_ID];
+      }
+
+      // 4. Persiapkan Multipart Request
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', file);
+
+      // 5. Eksekusi Upload
+      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name', {
+          method: 'POST',
+          headers: new Headers({ 'Authorization': 'Bearer ' + accessToken }),
+          body: form
+      });
+
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Gagal upload: ${errorData.error?.message || response.statusText}`);
+      }
+
+      return await response.json(); // Mengembalikan { id, webViewLink, name }
+  };
+
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookingFile) {
        alert("Mohon upload surat permohonan peminjaman.");
        return;
     }
+
+    setIsBookingLoading(true);
+    let driveLink = '';
     
     // Validasi Konflik dengan Google Calendar
     if (selectedRoom?.googleCalendarUrl && isGapiReady) {
@@ -395,12 +457,35 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
         }
     }
 
+    // Proses Upload ke Google Drive
+    if (isGapiReady && bookingFile) {
+        try {
+            // Pastikan user sudah login jika belum
+            if (!window.gapi.client.getToken()) {
+                await new Promise<void>((resolve) => {
+                    tokenClient.requestAccessToken({ prompt: '' });
+                    tokenClient.callback = (resp: any) => resolve();
+                });
+            }
+
+            const driveResult = await uploadFileToDrive(bookingFile);
+            driveLink = driveResult.webViewLink;
+            console.log("File berhasil diupload ke Drive:", driveResult);
+        } catch (error: any) {
+            console.error("Drive Upload Error:", error);
+            alert(`Gagal mengupload proposal ke Google Drive: ${error.message}`);
+            setIsBookingLoading(false);
+            return;
+        }
+    }
+
     const scheduleSummary = bookingSchedules.map(s => `- ${s.date} (${s.startTime} - ${s.endTime})`).join('\n');
 
     // Simpan ke Mock Data (Simulasi Backend)
-    alert(`Permohonan berhasil dikirim dan jadwal TERSEDIA!\n\nJadwal Kegiatan:\n${scheduleSummary}\n\nPenanggung Jawab: ${bookingForm.responsiblePerson}\nFile: ${bookingForm.proposalFile}`);
+    alert(`Permohonan berhasil dikirim!\n\nJadwal Kegiatan:\n${scheduleSummary}\n\nPenanggung Jawab: ${bookingForm.responsiblePerson}\nFile Proposal: ${driveLink || bookingForm.proposalFile} (Tersimpan di Google Drive)`);
     
     // Reset and go back
+    setIsBookingLoading(false);
     setBookingFile(null);
     setBookingForm({ purpose: '', responsiblePerson: '', contactPerson: '', proposalFile: '' });
     setBookingSchedules([{ date: '', startTime: '', endTime: '' }]);
@@ -536,7 +621,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                   {isImageProcessing ? (
                      <div className="flex flex-col items-center text-blue-600">
                         <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                        <span className="text-sm font-semibold">Converting to WebP & Compressing to &lt; 5MB...</span>
+                        <span className="text-sm font-semibold">Mengkonversi ke WebP & Kompresi &lt; 5MB...</span>
                      </div>
                   ) : formData.image ? (
                      <div className="flex flex-col items-center">
@@ -572,7 +657,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                   <div className="relative h-96 w-full bg-black group">
                       <div ref={panoramaRef} className="w-full h-full"></div>
                       <div className="absolute top-4 left-10 bg-black/50 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center backdrop-blur-sm pointer-events-none z-10">
-                          <Eye className="w-4 h-4 mr-2" /> 360° Interactive View
+                          <Eye className="w-4 h-4 mr-2" /> Tampilan Interaktif 360°
                       </div>
                   </div>
                   
@@ -806,7 +891,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                 <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input 
                     type="text" 
-                    placeholder="Live Search..." 
+                    placeholder="Cari Ruangan..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:text-white w-full md:w-64"
@@ -844,10 +929,10 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 transition-colors">{room.name}</h3>
               <div className="flex justify-between items-center mb-4">
                   <span className="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded dark:bg-blue-900/30 dark:text-blue-300">
-                     Cap: {room.capacity}
+                     Kap: {room.capacity}
                   </span>
                   {room.googleCalendarUrl && (
-                    <span title="Calendar Synced">
+                    <span title="Kalender Tersinkronisasi">
                       <Check className="w-4 h-4 text-green-500" />
                     </span>
                   )}
@@ -858,7 +943,7 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                   {room.facilities.slice(0, 3).map((f, i) => (
                       <span key={i} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{f}</span>
                   ))}
-                  {room.facilities.length > 3 && <span className="text-xs text-gray-400 px-2 py-1">+more</span>}
+                  {room.facilities.length > 3 && <span className="text-xs text-gray-400 px-2 py-1">+lainnya</span>}
               </div>
 
               <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">

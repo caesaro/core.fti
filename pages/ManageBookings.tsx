@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MOCK_BOOKINGS, MOCK_ROOMS } from '../services/mockData';
-import { Booking, BookingStatus } from '../types';
+import { Booking, BookingStatus, Room } from '../types';
 import { Search, Filter, CheckCircle, XCircle, Calendar, Clock, MapPin, User, AlertCircle, FileText, Download, X, Phone, Shield, Loader2 } from 'lucide-react';
 
 // Konfigurasi Google API
@@ -22,8 +21,8 @@ interface ManageBookingsProps {
 }
 
 const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showToast }) => {
-  // Menggunakan state yang disinkronkan dengan MOCK_BOOKINGS untuk persistensi sederhana
-  const [bookings, setBookings] = useState<Booking[]>(MOCK_BOOKINGS);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'All' | BookingStatus>('All');
   
@@ -71,13 +70,15 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
     setTokenClient(client);
   };
 
-  // Pastikan data termutakhir saat komponen dimount
   useEffect(() => {
-    setBookings(MOCK_BOOKINGS);
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setBookings(api.getBookings());
+    // setRooms(api.getRooms());
   }, []);
 
   const getRoomName = (roomId: string) => {
-    return MOCK_ROOMS.find(r => r.id === roomId)?.name || 'Unknown Room';
+    return rooms.find(r => r.id === roomId)?.name || 'Ruangan Tidak Diketahui';
   };
 
   const getCalendarId = (input: string) => {
@@ -89,18 +90,18 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
   };
 
   const addToGoogleCalendar = async (booking: Booking) => {
-    const room = MOCK_ROOMS.find(r => r.id === booking.roomId);
-    if (!room?.googleCalendarUrl) return { success: true, message: "Skipped: No Calendar URL" };
+    const room = rooms.find(r => r.id === booking.roomId);
+    if (!room?.googleCalendarUrl) return { success: true, message: "Dilewati: Tidak ada URL Kalender" };
 
     const calendarId = getCalendarId(room.googleCalendarUrl);
-    if (!calendarId) return { success: false, message: "Invalid Calendar ID" };
+    if (!calendarId) return { success: false, message: "ID Kalender Tidak Valid" };
 
     // Cek Auth
     if (window.gapi.client.getToken() === null) {
         return new Promise((resolve) => {
             tokenClient.requestAccessToken({ prompt: '' });
             tokenClient.callback = async (resp: any) => {
-                if (resp.error) resolve({ success: false, message: "Auth Failed" });
+                if (resp.error) resolve({ success: false, message: "Otentikasi Gagal" });
                 else resolve(await insertEvent(calendarId, booking, room.name));
             };
         });
@@ -123,10 +124,10 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
                   end: { dateTime: endDateTime.toISOString() }
               }
           });
-          return { success: true, message: "Synced to Google Calendar" };
+          return { success: true, message: "Disinkronkan ke Google Calendar" };
       } catch (error: any) {
           console.error("GAPI Error:", error);
-          return { success: false, message: error.result?.error?.message || "GAPI Error" };
+          return { success: false, message: error.result?.error?.message || "Kesalahan GAPI" };
       }
   };
 
@@ -140,18 +141,12 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
     // Jika Disetujui, coba masukkan ke Google Calendar dulu
     if (newStatus === BookingStatus.APPROVED && isGapiInitialized) {
         const gapiResult: any = await addToGoogleCalendar(booking);
-        if (!gapiResult.success && gapiResult.message !== "Skipped: No Calendar URL") {
+        if (!gapiResult.success && gapiResult.message !== "Dilewati: Tidak ada URL Kalender") {
             showToast(`Peringatan: Gagal sinkron ke Calendar (${gapiResult.message}), namun status tetap diupdate.`, 'warning');
         } else if (gapiResult.success) {
             showToast("Berhasil sinkronisasi ke Google Calendar!", "success");
         }
     }
-
-      // 1. Update Mock Data (Persistensi In-Memory)
-      const mockIndex = MOCK_BOOKINGS.findIndex(b => b.id === id);
-      if (mockIndex !== -1) {
-          MOCK_BOOKINGS[mockIndex].status = newStatus;
-      }
 
       // 2. Update Local State
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
@@ -170,7 +165,7 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
       showToast(message, type);
       addNotification(
         newStatus === BookingStatus.APPROVED ? 'Peminjaman Disetujui' : 'Peminjaman Ditolak',
-        `Admin telah memverifikasi request dari ${booking.userName}.`,
+        `Admin telah memverifikasi permintaan dari ${booking.userName}.`,
         type
       );
 
@@ -306,7 +301,7 @@ const ManageBookings: React.FC<ManageBookingsProps> = ({ addNotification, showTo
               )) : (
                  <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                       Tidak ada data booking yang sesuai filter.
+                       Tidak ada data peminjaman yang sesuai filter.
                     </td>
                  </tr>
               )}

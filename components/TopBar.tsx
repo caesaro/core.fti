@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Menu, Moon, Sun, Bell, Search, LogOut, User, ChevronDown, Check, Box, Calendar, Users } from 'lucide-react';
 import { Role, Notification } from '../types';
-import { MOCK_ROOMS, MOCK_EQUIPMENT, MOCK_USERS } from '../services/mockData';
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -30,19 +29,10 @@ const TopBar: React.FC<TopBarProps> = ({
     const query = e.target.value;
     setSearchQuery(query);
 
-    if (query.length > 1) {
-      const lowerQuery = query.toLowerCase();
-      const results = [
-        ...MOCK_ROOMS.filter(r => r.name.toLowerCase().includes(lowerQuery)).map(r => ({ ...r, type: 'Ruangan', page: 'rooms', icon: Calendar })),
-        ...(currentRole !== Role.USER ? MOCK_EQUIPMENT.filter(e => e.name.toLowerCase().includes(lowerQuery)).map(e => ({ ...e, type: 'Barang', page: 'inventory', icon: Box })) : []),
-        ...(currentRole === Role.ADMIN ? MOCK_USERS.filter(u => u.name.toLowerCase().includes(lowerQuery)).map(u => ({ ...u, type: 'User', page: 'users', icon: Users })) : [])
-      ].slice(0, 5);
-      setSearchResults(results);
-      setIsSearchOpen(true);
-    } else {
-      setSearchResults([]);
-      setIsSearchOpen(false);
-    }
+    // TODO: Implement global search with API endpoint
+    // For now, this is disabled as mock data is removed.
+    setSearchResults([]);
+    setIsSearchOpen(false);
   };
 
   const handleResultClick = (page: string) => {
@@ -64,11 +54,12 @@ const TopBar: React.FC<TopBarProps> = ({
         <div className="hidden md:flex items-center ml-4 relative">
           <Search className="w-4 h-4 text-gray-400 absolute left-3" />
           <input 
-            type="text" 
-            placeholder="Cari ruangan, barang, user..." 
+            type="text"
+            placeholder="Pencarian Global (WIP)" 
             value={searchQuery}
             onChange={handleSearch}
             onFocus={() => searchQuery.length > 1 && setIsSearchOpen(true)}
+            disabled // Menonaktifkan search untuk sementara
             className="pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border-none rounded-full text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 w-64 transition-all"
           />
           

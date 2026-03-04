@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { MOCK_BOOKINGS, MOCK_ROOMS } from '../services/mockData';
-import { Booking, BookingStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Booking, BookingStatus, Room } from '../types';
 import { Calendar, Clock, MapPin, Search, FileText, XCircle, AlertCircle, CheckCircle, Hourglass, Trash2 } from 'lucide-react';
 
 interface MyBookingsProps {
@@ -9,14 +8,21 @@ interface MyBookingsProps {
 }
 
 const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
-  // Filter bookings for this user initially
-  const [myBookings, setMyBookings] = useState<Booking[]>(
-    MOCK_BOOKINGS.filter(b => b.userId === userId)
-  );
+  const [myBookings, setMyBookings] = useState<Booking[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // const allBookings = api.getAllBookings();
+    // setMyBookings(allBookings.filter(b => b.userId === userId));
+    // setRooms(api.getRooms());
+  }, [userId]);
+
+
   const getRoomName = (roomId: string) => {
-    return MOCK_ROOMS.find(r => r.id === roomId)?.name || 'Unknown Room';
+    return rooms.find(r => r.id === roomId)?.name || 'Unknown Room';
   };
 
   const getStatusConfig = (status: BookingStatus) => {
@@ -32,6 +38,7 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
 
   const handleCancelBooking = (id: string) => {
     if (confirm("Apakah Anda yakin ingin membatalkan permohonan peminjaman ini?")) {
+      // Di aplikasi nyata, ini akan menjadi panggilan API untuk delete
       setMyBookings(prev => prev.filter(b => b.id !== id));
       showToast("Permohonan peminjaman berhasil dibatalkan.", "info");
     }

@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { MOCK_USERS } from '../services/mockData';
+import React, { useState, useEffect } from 'react';
 import { AppUser } from '../types';
 import { Search, Plus, Filter, Edit, Trash2, X, Check, MoreHorizontal, UserCheck, UserX, Shield } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<'All' | 'Mahasiswa' | 'Dosen'>('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Aktif' | 'Non-Aktif' | 'Suspended'>('All');
@@ -15,6 +14,12 @@ const UserManagement: React.FC = () => {
   const [formData, setFormData] = useState<Partial<AppUser>>({
     name: '', email: '', role: 'Mahasiswa', identifier: '', department: '', status: 'Aktif'
   });
+
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setUsers(api.getUsers());
+  }, []);
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 

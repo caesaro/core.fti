@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { MOCK_LAB_STAFF } from '../services/mockData';
+import React, { useState, useEffect } from 'react';
 import { LabStaff } from '../types';
 import { Search, Plus, Printer, Download, Edit, Trash2, X, Check, FileSpreadsheet } from 'lucide-react';
+import nocLogo from "../src/assets/noc.png";
 
 const LaboranManagement: React.FC = () => {
-  const [staffList, setStaffList] = useState<LabStaff[]>(MOCK_LAB_STAFF);
+  const [staffList, setStaffList] = useState<LabStaff[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Aktif' | 'Non-Aktif'>('All');
   
@@ -14,6 +14,12 @@ const LaboranManagement: React.FC = () => {
   const [formData, setFormData] = useState<Partial<LabStaff>>({
     name: '', nim: '', email: '', phone: '', type: 'Teknisi', status: 'Aktif'
   });
+
+  useEffect(() => {
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setStaffList(api.getLabStaff());
+  }, []);
 
   // Filter Data
   const filteredStaff = staffList.filter(staff => {
@@ -85,12 +91,11 @@ const LaboranManagement: React.FC = () => {
       <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
         <div className="flex items-center justify-between mb-4">
            <div className="flex items-center space-x-4">
-               {/* Placeholder for Logo */}
-               <div className="w-16 h-16 bg-gray-200 flex items-center justify-center text-xl font-bold border border-gray-400">FTI</div>
+               <img src={nocLogo} alt="Logo FTI" className="w-24 h-24 object-contain" />
                <div>
                    <h1 className="text-2xl font-bold uppercase">Fakultas Teknologi Informasi</h1>
                    <h2 className="text-xl">Universitas Kristen Satya Wacana</h2>
-                   <p className="text-sm">Jl. Diponegoro 52-60 Salatiga - Jawa Tengah 50711</p>
+                   <p className="text-sm">Jl. Dr. O. Notohamidjojo No.1 - 10, Blotongan, Kec. Sidorejo, Kota Salatiga, Jawa Tengah 50715</p>
                </div>
            </div>
            <div className="text-right">

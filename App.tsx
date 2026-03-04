@@ -5,7 +5,7 @@ import TopBar from './components/TopBar';
 import Dashboard from './pages/Dashboard';
 import Rooms from './pages/Rooms';
 import Schedule from './pages/Schedule'; 
-import Equipment from './pages/Equipment';
+import Loans from './pages/Loans';
 import LaboranManagement from './pages/LaboranManagement';
 import Inventory from './pages/Inventory';
 import UserManagement from './pages/UserManagement';
@@ -16,7 +16,6 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Toast from './components/Toast';
 import LoadingScreen from './components/LoadingScreen';
-import { MOCK_ROOMS, MOCK_EQUIPMENT, MOCK_NOTIFICATIONS } from './services/mockData';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('isAuthenticated') === 'true');
@@ -35,7 +34,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Notifications & Toast State
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Simulate Initial System Load
@@ -43,6 +42,11 @@ const App: React.FC = () => {
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 2000); // 2 seconds initial load
+
+    // --- SIMULASI FETCH DATA DARI DATABASE ---
+    // Di aplikasi nyata, ini akan menjadi panggilan API ke backend Anda
+    // setNotifications(api.getNotifications());
+
     return () => clearTimeout(timer);
   }, []);
 
@@ -125,10 +129,10 @@ const App: React.FC = () => {
         return <Schedule role={currentRole} showToast={showToast} isDarkMode={isDarkMode} />;
       case 'rooms':
         return <Rooms role={currentRole} isDarkMode={isDarkMode} />;
-      case 'equipment':
+      case 'loans':
         // Double check protection (though Sidebar hides it)
         if (currentRole === Role.USER) return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
-        return <Equipment role={currentRole} showToast={showToast} />;
+        return <Loans role={currentRole} showToast={showToast} />;
       case 'laboran-management':
         if (currentRole !== Role.ADMIN) return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
         return <LaboranManagement />;
