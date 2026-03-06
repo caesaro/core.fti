@@ -52,8 +52,15 @@ const CreateBooking: React.FC<CreateBookingProps> = ({ showToast, onNavigate }) 
         alert("Ukuran file maksimal 5MB!");
         return;
       }
-      setBookingFile(file);
-      setBookingForm(prev => ({ ...prev, proposalFile: file.name }));
+      
+      // Convert file to Base64 for backend storage
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result as string;
+        setBookingFile(file);
+        setBookingForm(prev => ({ ...prev, proposalFile: base64Data }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -96,16 +103,13 @@ const CreateBooking: React.FC<CreateBookingProps> = ({ showToast, onNavigate }) 
     try {
         const userId = localStorage.getItem('userId') || 'GUEST';
         
-        // TODO: Implementasi upload file ke Google Drive / Server di sini
-        // Untuk saat ini kita kirim nama file saja sesuai skema database
-        
         const payload = {
             roomId: selectedRoomId,
             userId: userId,
             responsiblePerson: bookingForm.responsiblePerson,
             contactPerson: bookingForm.contactPerson,
             purpose: bookingForm.purpose,
-            proposalFile: bookingForm.proposalFile, // Idealnya URL hasil upload
+            proposalFile: bookingForm.proposalFile, // Kirim sebagai Base64
             schedules: bookingSchedules
         };
 

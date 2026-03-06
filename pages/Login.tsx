@@ -63,7 +63,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
       }
 
       if (response.ok && data.success) {
-        // Simpan User ID untuk keperluan Profile
+        // Simpan User ID dan Nama untuk keperluan Profile
         localStorage.setItem('userId', data.id);
         localStorage.setItem('userName', data.name);
         

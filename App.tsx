@@ -8,6 +8,7 @@ import Schedule from './pages/Schedule';
 import Loans from './pages/Loans';
 import Events from './pages/Events';
 import LaboranManagement from './pages/LaboranManagement';
+import PKLManagement from './pages/PKLManagement';
 import Inventory from './pages/Inventory';
 import UserManagement from './pages/UserManagement';
 import ManageBookings from './pages/ManageBookings';
@@ -216,7 +217,7 @@ const App: React.FC = () => {
             <Loans role={currentRole} showToast={showToast} />
           </ProtectedRoute>
         );
-      case 'laboran-management':
+case 'laboran-management':
         return (
           <ProtectedRoute 
             currentRole={currentRole} 
@@ -224,6 +225,16 @@ const App: React.FC = () => {
             onNavigate={setCurrentPage}
           >
             <LaboranManagement />
+          </ProtectedRoute>
+        );
+      case 'pkl-management':
+        return (
+          <ProtectedRoute 
+            currentRole={currentRole} 
+            allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+            onNavigate={setCurrentPage}
+          >
+            <PKLManagement showToast={showToast} />
           </ProtectedRoute>
         );
       case 'inventory':
@@ -247,8 +258,9 @@ const App: React.FC = () => {
           </ProtectedRoute>
         );
       case 'bookings':
-        // Passing John Doe's ID for demo purposes to match mock data
-        return <MyBookings userId="672019001" showToast={showToast} />;
+        // Get dynamic user ID from localStorage
+        const currentUserId = localStorage.getItem('userId') || '';
+        return <MyBookings userId={currentUserId} showToast={showToast} />;
       case 'create-booking':
         return <CreateBooking showToast={showToast} onNavigate={setCurrentPage} />;
       case 'manage-bookings':

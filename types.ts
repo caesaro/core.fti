@@ -100,3 +100,35 @@ export interface ToastMessage {
   message: string;
   type: 'success' | 'error' | 'info' | 'warning';
 }
+
+export interface RoomComputer {
+  id: string;
+  roomId: string;
+  pcNumber: string;
+  cpu: string;
+  gpuType: 'Integrated' | 'Dedicated';
+  gpuModel: string;
+  vram: string;
+  ram: string;
+  storage: string;
+  os: string;
+  keyboard: string;
+  mouse: string;
+  monitor: string;
+  condition: 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
+}
+
+export interface PKLStudent {
+  id: string;
+  nama: string;
+  sekolah: string;
+  Jurusan: string;
+  tanggalMulai: string;
+  tanggalSelesai: string;
+  status: 'Aktif' | 'Selesai' | 'Dibatalkan';
+  suratPengajuan?: string; // Base64 encoded PDF
+  pembimbingId?: string;
+  pembimbingNama?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}

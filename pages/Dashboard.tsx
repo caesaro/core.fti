@@ -82,7 +82,9 @@ const DashboardSkeleton = () => (
 
 const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
   const isUser = role.toString().toUpperCase() === Role.USER.toString().toUpperCase();
-  const LOGGED_IN_USER_ID = "672019001"; // ID simulasi untuk user login (sesuai App.tsx)
+  
+  // Get logged in user ID from localStorage (set after successful login)
+  const LOGGED_IN_USER_ID = localStorage.getItem('userId') || '';
 
   // Data states
   const [bookings, setBookings] = useState<Booking[]>([]);

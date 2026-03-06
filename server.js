@@ -375,6 +375,135 @@ app.delete('/api/staff/:id', async (req, res) => {
   }
 });
 
+// --- PKL STUDENTS (Tabel: pkl_students) ---
+
+// Get All PKL Students
+app.get('/api/pkl', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.*, s.nama as pembimbing_nama 
+      FROM pkl_students p 
+      LEFT JOIN staff s ON p.pembimbing_id = s.id
+      ORDER BY p.created_at DESC
+    `);
+    
+    const pklStudents = result.rows.map(row => ({
+      id: row.id,
+      nama: row.nama_siswa,
+      sekolah: row.sekolah,
+      Jurusan: row.jurusan,
+      tanggalMulai: row.tanggal_mulai ? new Date(row.tanggal_mulai).toLocaleDateString('en-CA') : '',
+      tanggalSelesai: row.tanggal_selesai ? new Date(row.tanggal_selesai).toLocaleDateString('en-CA') : '',
+      status: row.status,
+      suratPengajuan: row.surat_pengajuan ? `data:application/pdf;base64,${row.surat_pengajuan.toString('base64')}` : undefined,
+      pembimbingId: row.pembimbing_id,
+      pembimbingNama: row.pembimbing_nama,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    
+    res.json(pklStudents);
+  } catch (err) {
+    console.error('Get PKL error:', err);
+    res.status(500).json({ error: 'Gagal mengambil data PKL.' });
+  }
+});
+
+// Add New PKL Student (Single or Batch)
+app.post('/api/pkl', async (req, res) => {
+  const { students } = req.body;
+  
+  // students bisa berupa array (batch) atau single object
+  const studentList = Array.isArray(students) ? students : [students];
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    for (const student of studentList) {
+      const { nama, sekolah, Jurusan, tanggalMulai, tanggalSelesai, pembimbingId, suratPengajuan } = student;
+      
+      // Konversi file PDF jika ada
+      let suratBuffer = null;
+      if (suratPengajuan && suratPengajuan.startsWith('data:application/pdf')) {
+        const base64Data = suratPengajuan.split(',')[1];
+        suratBuffer = Buffer.from(base64Data, 'base64');
+        
+        // Validasi ukuran: Max 5MB
+        if (suratBuffer.length > 5 * 1024 * 1024) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Ukuran file surat pengajuan melebihi batas maksimum 5MB.' });
+        }
+      }
+      
+      const id = `PKL-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      
+      await client.query(
+        `INSERT INTO pkl_students (id, nama_siswa, sekolah, Jurusan, tanggal_mulai, tanggal_selesai, pembimbing_id, surat_pengajuan, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Aktif')`,
+        [id, nama, sekolah, Jurusan, tanggalMulai, tanggalSelesai, pembimbingId || null, suratBuffer]
+      );
+    }
+    
+    await client.query('COMMIT');
+    res.json({ success: true, message: `${studentList.length} data PKL berhasil ditambahkan.` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Add PKL error:', err);
+    res.status(500).json({ error: 'Gagal menambah data PKL.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Update PKL Student
+app.put('/api/pkl/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nama, sekolah, Jurusan, tanggalMulai, tanggalSelesai, status, pembimbingId, suratPengajuan } = req.body;
+  
+  try {
+    // Cek jika ada file baru
+    let suratBuffer = null;
+    if (suratPengajuan && suratPengajuan.startsWith('data:application/pdf')) {
+      const base64Data = suratPengajuan.split(',')[1];
+      suratBuffer = Buffer.from(base64Data, 'base64');
+      
+      // Validasi ukuran
+      if (suratBuffer.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Ukuran file surat pengajuan melebihi batas maksimum 5MB.' });
+      }
+      
+      // Update dengan file baru
+      await pool.query(
+        `UPDATE pkl_students SET nama_siswa=$1, sekolah=$2, Jurusan=$3, tanggal_mulai=$4, tanggal_selesai=$5, status=$6, pembimbing_id=$7, surat_pengajuan=$8, updated_at=CURRENT_TIMESTAMP WHERE id=$9`,
+        [nama, sekolah, Jurusan, tanggalMulai, tanggalSelesai, status, pembimbingId || null, suratBuffer, id]
+      );
+    } else {
+      // Update tanpa mengubah file
+      await pool.query(
+        `UPDATE pkl_students SET nama_siswa=$1, sekolah=$2, Jurusan=$3, tanggal_mulai=$4, tanggal_selesai=$5, status=$6, pembimbing_id=$7, updated_at=CURRENT_TIMESTAMP WHERE id=$8`,
+        [nama, sekolah, Jurusan, tanggalMulai, tanggalSelesai, status, pembimbingId || null, id]
+      );
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update PKL error:', err);
+    res.status(500).json({ error: 'Gagal update data PKL.' });
+  }
+});
+
+// Delete PKL Student
+app.delete('/api/pkl/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM pkl_students WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete PKL error:', err);
+    res.status(500).json({ error: 'Gagal menghapus data PKL.' });
+  }
+});
+
 // --- INVENTORY (Tabel: inventory) ---
 
 app.get('/api/inventory', async (req, res) => {
@@ -521,6 +650,107 @@ app.delete('/api/rooms/:id', async (req, res) => {
     } catch (err) {
       res.status(500).json({ error: 'DB Error' });
     }
+});
+
+// --- ROOM COMPUTERS (Spesifikasi) ---
+
+// Get All Computers in a Room
+app.get('/api/rooms/:id/computers', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM room_computers WHERE room_id = $1 ORDER BY pc_number ASC', [req.params.id]);
+    const computers = result.rows.map(row => ({
+      id: row.id,
+      roomId: row.room_id,
+      pcNumber: row.pc_number,
+      cpu: row.cpu,
+      gpuType: row.gpu_type,
+      gpuModel: row.gpu_model,
+      vram: row.vram,
+      ram: row.ram,
+      storage: row.storage,
+      os: row.os,
+      keyboard: row.keyboard,
+      mouse: row.mouse,
+      monitor: row.monitor,
+      condition: row.condition
+    }));
+    res.json(computers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+// Get Dominant Spec Summary for a Room
+app.get('/api/rooms/:id/specs-summary', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM room_computers WHERE room_id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.json(null);
+
+    // Hitung frekuensi spesifikasi yang sama
+    const counts = {};
+    let maxCount = 0;
+    let dominant = null;
+
+    for (const pc of result.rows) {
+        // Buat signature key dari spek (kecuali ID dan Nomor PC)
+        const key = JSON.stringify({
+            cpu: pc.cpu, gpu_type: pc.gpu_type, gpu_model: pc.gpu_model,
+            vram: pc.vram, ram: pc.ram, storage: pc.storage,
+            os: pc.os, keyboard: pc.keyboard, mouse: pc.mouse, monitor: pc.monitor
+        });
+        
+        counts[key] = (counts[key] || 0) + 1;
+        if (counts[key] > maxCount) {
+            maxCount = counts[key];
+            dominant = JSON.parse(key);
+        }
+    }
+    
+    res.json({ ...dominant, totalUnits: result.rows.length, dominantCount: maxCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+// Add/Update Computer
+app.post('/api/computers', async (req, res) => {
+  const { id, roomId, pcNumber, cpu, gpuType, gpuModel, vram, ram, storage, os, keyboard, mouse, monitor, condition } = req.body;
+  try {
+    // Upsert (Insert or Update)
+    const query = `
+      INSERT INTO room_computers (id, room_id, pc_number, cpu, gpu_type, gpu_model, vram, ram, storage, os, keyboard, mouse, monitor, condition)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO UPDATE SET
+      pc_number=$3, cpu=$4, gpu_type=$5, gpu_model=$6, vram=$7, ram=$8, storage=$9, os=$10, keyboard=$11, mouse=$12, monitor=$13, condition=$14
+    `;
+    await pool.query(query, [id, roomId, pcNumber, cpu, gpuType, gpuModel, vram, ram, storage, os, keyboard, mouse, monitor, condition || 'Baik']);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+// Delete All Computers in a Room (Reset)
+app.delete('/api/rooms/:id/computers', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM room_computers WHERE room_id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+app.delete('/api/computers/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM room_computers WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'DB Error' });
+  }
 });
 
 // --- BOOKINGS (Tabel: bookings & booking_schedules) ---
