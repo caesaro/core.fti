@@ -30,7 +30,9 @@ export const api = async (endpoint: string, options: ApiOptions = {}) => {
 
   // Eksekusi Fetch
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    // Jika API_BASE_URL localhost, gunakan relative path agar request via HP/Tailscale masuk ke Proxy Vite
+    const baseUrl = API_BASE_URL.includes('localhost') ? '' : API_BASE_URL;
+    const response = await fetch(`${baseUrl}${endpoint}`, config);
 
     // --- Global Error Handling (Interceptor Response) ---
     

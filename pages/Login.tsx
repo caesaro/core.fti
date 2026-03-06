@@ -58,6 +58,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
       // Cek apakah user harus reset password (dari Admin)
       if (data.resetRequired) {
         showToast(`Halo ${data.name}, Admin telah mereset akun Anda. Silakan buat password baru.`, 'info');
+        // Simpan email dari response agar sesuai dengan yang ada di database
+        setFormData(prev => ({ ...prev, email: data.email }));
         setView('set-password');
         return;
       }

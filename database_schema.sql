@@ -93,6 +93,7 @@ CREATE TABLE inventory (
     kondisi VARCHAR(20) DEFAULT 'Baik',
     is_available BOOLEAN DEFAULT TRUE,
     serial_number VARCHAR(100),
+    lokasi VARCHAR(100), -- Lokasi/Rak/Ruangan barang saat ini
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -127,6 +128,30 @@ CREATE TABLE loans (
     CONSTRAINT fk_loan_transaction FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
     CONSTRAINT fk_loan_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE RESTRICT
 );
+
+-- 6b. Tabel Item Movements (Tracking Perpindahan Barang)
+-- Mencatat perpindahan barang (baik dari peminjaman maupun input manual)
+CREATE TABLE item_movements (
+    id VARCHAR(50) PRIMARY KEY,
+    inventory_id VARCHAR(50) NOT NULL,
+    movement_date DATE NOT NULL,
+    movement_type VARCHAR(20) NOT NULL, -- 'Peminjaman' atau 'Manual'
+    from_person VARCHAR(100), -- Siapa yang menyerahkan
+    to_person VARCHAR(100), -- Siapa yang menerima
+    moved_by VARCHAR(100), -- Staff yang memproses
+    quantity INT DEFAULT 1,
+    from_location VARCHAR(100), -- Lokasi SEBELUM perpindahan
+    to_location VARCHAR(100), -- Lokasi SESUDAH perpindahan
+    notes TEXT,
+    loan_id VARCHAR(50), -- Reference ke loans (nullable untuk manual)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_movement_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE CASCADE
+);
+
+-- Indexing untuk Item Movements
+CREATE INDEX idx_movements_inventory ON item_movements(inventory_id);
+CREATE INDEX idx_movements_date ON item_movements(movement_date);
+CREATE INDEX idx_movements_type ON item_movements(movement_type);
 
 -- 7. Tabel Notifications
 -- Menyimpan riwayat notifikasi untuk dashboard
@@ -208,3 +233,29 @@ CREATE TABLE pkl_students (
 CREATE INDEX idx_pkl_sekolah ON pkl_students(sekolah);
 CREATE INDEX idx_pkl_status ON pkl_students(status);
 CREATE INDEX idx_pkl_pembimbing ON pkl_students(pembimbing_id);
+
+-- 11. Tabel Class Schedules (Jadwal Kuliah)
+-- Menyimpan jadwal kelas per semester
+CREATE TABLE class_schedules (
+    id VARCHAR(50) PRIMARY KEY,
+    course_code VARCHAR(20) NOT NULL,       -- Kode Matakuliah (misal: TI401)
+    course_name VARCHAR(100) NOT NULL,      -- Nama Matakuliah (misal: Jaringan Komputer)
+    class_group VARCHAR(10) NOT NULL,       -- Kelompok Kelas (misal: A, B, C)
+    day_of_week VARCHAR(10) NOT NULL,      -- Hari (Senin, Selasa, etc.)
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    semester VARCHAR(20) NOT NULL,          -- Semester (misal: Ganjil 2024/2025)
+    academic_year VARCHAR(20) NOT NULL,     -- Tahun Akademik (2024/2025)
+    room_id VARCHAR(50),
+    lecturer_name VARCHAR(100),             -- Nama Dosen Pengampu
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_class_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL
+);
+
+-- Indexing untuk Class Schedules
+CREATE INDEX idx_class_schedules_room ON class_schedules(room_id);
+CREATE INDEX idx_class_schedules_semester ON class_schedules(semester);
+CREATE INDEX idx_class_schedules_academic ON class_schedules(academic_year);
+CREATE INDEX idx_class_schedules_day ON class_schedules(day_of_week);
+

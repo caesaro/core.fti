@@ -3,17 +3,18 @@ import { Role, Notification, ToastMessage } from './types';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Dashboard from './pages/Dashboard';
-import Rooms from './pages/Rooms';
-import Schedule from './pages/Schedule'; 
-import Loans from './pages/Loans';
-import Events from './pages/Events';
-import LaboranManagement from './pages/LaboranManagement';
-import PKLManagement from './pages/PKLManagement';
-import Inventory from './pages/Inventory';
-import UserManagement from './pages/UserManagement';
-import ManageBookings from './pages/ManageBookings';
-import MyBookings from './pages/MyBookings'; 
-import CreateBooking from './pages/CreateBooking';
+import Ruangan from './pages/Ruangan';
+import JadwalRuang from './pages/JadwalRuang'; 
+import PeminjamanBarang from './pages/PeminjamanBarang';
+import Acara from './pages/Acara';
+import ManajemenLaboran from './pages/ManajemenLaboran';
+import ManajemenPKL from './pages/ManajemenPKL';
+import Inventaris from './pages/Inventaris';
+import PerpindahanBarang from './pages/PerpindahanBarang';
+import ManajemenUser from './pages/ManajemenUser';
+import PesananRuang from './pages/PesananRuang';
+import PemesananSaya from './pages/PemesananSaya';
+import BuatPesanan from './pages/BuatPesanan';
 import Profile from './pages/Profile'; 
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -21,6 +22,7 @@ import Toast from './components/Toast';
 import LoadingScreen from './components/LoadingScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import Maintenance from './pages/Maintenance';
+import JadwalKuliah from './pages/JadwalKuliah';
 import { api } from './services/api';
 
 const App: React.FC = () => {
@@ -202,11 +204,11 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
       case 'schedule':
-        return <Schedule role={currentRole} showToast={showToast} isDarkMode={isDarkMode} />;
+        return <JadwalRuang role={currentRole} showToast={showToast} isDarkMode={isDarkMode} />;
       case 'rooms':
-        return <Rooms role={currentRole} isDarkMode={isDarkMode} />;
+        return <Ruangan role={currentRole} isDarkMode={isDarkMode} />;
       case 'events':
-        return <Events showToast={showToast} />;
+        return <Acara showToast={showToast} />;
       case 'loans':
         return (
           <ProtectedRoute 
@@ -214,17 +216,17 @@ const App: React.FC = () => {
             allowedRoles={[Role.ADMIN, Role.LABORAN]} 
             onNavigate={setCurrentPage}
           >
-            <Loans role={currentRole} showToast={showToast} />
+            <PeminjamanBarang role={currentRole} showToast={showToast} />
           </ProtectedRoute>
         );
-case 'laboran-management':
+      case 'laboran-management':
         return (
           <ProtectedRoute 
             currentRole={currentRole} 
             allowedRoles={[Role.ADMIN]} 
             onNavigate={setCurrentPage}
           >
-            <LaboranManagement />
+            <ManajemenLaboran />
           </ProtectedRoute>
         );
       case 'pkl-management':
@@ -234,7 +236,7 @@ case 'laboran-management':
             allowedRoles={[Role.ADMIN, Role.LABORAN]} 
             onNavigate={setCurrentPage}
           >
-            <PKLManagement showToast={showToast} />
+            <ManajemenPKL showToast={showToast} />
           </ProtectedRoute>
         );
       case 'inventory':
@@ -244,7 +246,17 @@ case 'laboran-management':
             allowedRoles={[Role.ADMIN, Role.LABORAN]} 
             onNavigate={setCurrentPage}
           >
-            <Inventory />
+            <Inventaris />
+          </ProtectedRoute>
+        );
+      case 'item-movements':
+        return (
+          <ProtectedRoute 
+            currentRole={currentRole} 
+            allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+            onNavigate={setCurrentPage}
+          >
+            <PerpindahanBarang role={currentRole} showToast={showToast} />
           </ProtectedRoute>
         );
       case 'users':
@@ -254,15 +266,15 @@ case 'laboran-management':
             allowedRoles={[Role.ADMIN]} 
             onNavigate={setCurrentPage}
           >
-            <UserManagement />
+            <ManajemenUser />
           </ProtectedRoute>
         );
       case 'bookings':
         // Get dynamic user ID from localStorage
         const currentUserId = localStorage.getItem('userId') || '';
-        return <MyBookings userId={currentUserId} showToast={showToast} />;
+        return <PemesananSaya userId={currentUserId} showToast={showToast} />;
       case 'create-booking':
-        return <CreateBooking showToast={showToast} onNavigate={setCurrentPage} />;
+        return <BuatPesanan showToast={showToast} onNavigate={setCurrentPage} />;
       case 'manage-bookings':
         return (
           <ProtectedRoute 
@@ -270,7 +282,7 @@ case 'laboran-management':
             allowedRoles={[Role.ADMIN, Role.LABORAN]} 
             onNavigate={setCurrentPage}
           >
-            <ManageBookings addNotification={addNotification} showToast={showToast} />
+            <PesananRuang addNotification={addNotification} showToast={showToast} />
           </ProtectedRoute>
         );
       case 'profile':
@@ -283,6 +295,16 @@ case 'laboran-management':
             onNavigate={setCurrentPage}
           >
             <Settings showToast={showToast} />
+          </ProtectedRoute>
+        );
+      case 'class-schedule':
+        return (
+          <ProtectedRoute 
+            currentRole={currentRole} 
+            allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+            onNavigate={setCurrentPage}
+          >
+            <JadwalKuliah role={currentRole} showToast={showToast} />
           </ProtectedRoute>
         );
       default:

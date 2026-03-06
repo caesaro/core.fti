@@ -30,9 +30,10 @@ export interface Booking {
   responsiblePerson: string; // New: Nama Penanggung Jawab
   contactPerson: string; // New: No HP / WA
   purpose: string;
-  date: string; // YYYY-MM-DD
-  startTime: string; // HH:mm
-  endTime: string; // HH:mm
+  date: string; // YYYY-MM-DD (kept for backward compatibility)
+  startTime: string; // HH:mm (kept for backward compatibility)
+  endTime: string; // HH:mm (kept for backward compatibility)
+  schedules?: { date: string; startTime: string; endTime: string }[]; // Multiple schedules support
   proposalFile?: string; // New: URL/Name of uploaded PDF
   status: BookingStatus;
   rejectionReason?: string; // Alasan penolakan
@@ -46,6 +47,7 @@ export interface Equipment {
   condition: 'Baik' | 'Rusak Ringan' | 'Rusak Berat';
   isAvailable: boolean;
   serialNumber?: string;
+  location?: string; // Lokasi/Rak/Ruangan barang saat ini
 }
 
 export interface Loan {
@@ -62,6 +64,24 @@ export interface Loan {
   actualReturnDate?: string;
   actualReturnTime?: string; // Jam realisasi kembali
   status: 'Dipinjam' | 'Dikembalikan' | 'Terlambat';
+  location?: string; // Lokasi peminjaman
+}
+
+export interface ItemMovement {
+  id: string;
+  inventoryId: string;
+  inventoryName?: string;
+  movementDate: string;
+  movementType: 'Peminjaman' | 'Manual';
+  fromPerson: string;
+  toPerson: string;
+  movedBy: string;
+  quantity: number;
+  fromLocation: string;
+  toLocation: string;
+  notes?: string;
+  loanId?: string;
+  createdAt?: string;
 }
 
 export interface LabStaff {

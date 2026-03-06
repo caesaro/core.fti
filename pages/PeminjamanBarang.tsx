@@ -10,7 +10,7 @@ interface LoansProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
+const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [filter, setFilter] = useState('All');
@@ -18,14 +18,15 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState<{equipmentIds: string[], borrowerName: string, guarantee: string, nim: string, borrowDate: string, borrowTime: string, borrowOfficer: string}>({
+const [formData, setFormData] = useState<{equipmentIds: string[], borrowerName: string, guarantee: string, nim: string, borrowDate: string, borrowTime: string, borrowOfficer: string, location: string}>({
     equipmentIds: [''],
     borrowerName: '',
     guarantee: 'KTM',
     nim: '',
     borrowDate: new Date().toISOString().split('T')[0], // Default hari ini
     borrowTime: new Date().toTimeString().slice(0, 5),   // Default jam sekarang
-    borrowOfficer: ''
+    borrowOfficer: '',
+    location: ''
   });
 
   // Detail & Return Modal State
@@ -103,7 +104,10 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
               return { ...prev, equipmentIds: newIds };
           });
 
-          handleCloseScanner();
+          // Hanya tutup scanner jika sedang mengisi baris tertentu (bukan mode tambah banyak)
+          if (scanningRowIndex !== null) {
+              handleCloseScanner();
+          }
       } else {
           showToast(`ID ${decodedText} tidak ditemukan`, "error");
       }
@@ -376,7 +380,8 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
                 guarantee: formData.guarantee,
                 borrowDate: formData.borrowDate,
                 borrowTime: formData.borrowTime,
-                borrowOfficer: formData.borrowOfficer
+                borrowOfficer: formData.borrowOfficer,
+                location: formData.location
             }
         });
         if (res.ok) {
@@ -393,7 +398,8 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
         nim: '', 
         borrowDate: new Date().toISOString().split('T')[0],
         borrowTime: new Date().toTimeString().slice(0, 5),
-        borrowOfficer: ''
+        borrowOfficer: '',
+        location: ''
     });
   };
 
@@ -535,20 +541,20 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
 
       {/* Modal Form */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
-                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-full sm:max-w-lg md:max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
+              <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 flex-shrink-0">
+                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center text-sm sm:text-base">
                     <Plus className="w-5 h-5 mr-2 text-blue-600" />
                     Input Peminjaman Baru
                  </h3>
-                 <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                 <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
                     <X className="w-5 h-5" />
                  </button>
               </div>
-              <form onSubmit={handleSubmitLoan} className="p-6 space-y-4">
+              <form onSubmit={handleSubmitLoan} className="p-3 sm:p-6 space-y-4 overflow-y-auto flex-1">
                  {/* Informasi Peminjam */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                      <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama Peminjam</label>
                         <div className="relative">
@@ -626,6 +632,16 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                         />
                      </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Peminjaman</label>
+                        <input 
+                            type="text" 
+                            value={formData.location}
+                            onChange={(e) => setFormData({...formData, location: e.target.value})}
+                            placeholder="Contoh: Ruang 301, Lab Jaringan"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                     </div>
                  </div>
 
                  {/* Daftar Barang */}
@@ -633,6 +649,16 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
                     <div className="flex justify-between items-center mb-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Daftar Barang</label>
                         <div className="flex gap-3">
+                            <button 
+                                type="button" 
+                                onClick={() => {
+                                    setScanningRowIndex(null); // Null artinya mode tambah baru (Global)
+                                    setIsScannerOpen(true);
+                                }}
+                                className="text-xs text-blue-600 hover:underline flex items-center font-medium"
+                            >
+                                <QrCode className="w-3 h-3 mr-1" /> Scan Tambah
+                            </button>
                             <button type="button" onClick={addEquipmentRow} className="text-xs text-blue-600 hover:underline flex items-center font-medium">
                                 <Plus className="w-3 h-3 mr-1" /> Tambah Manual
                             </button>
@@ -777,7 +803,11 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
                           )}
                       </div>
 
-                      <p className="text-xs text-center text-gray-500 mt-4">Arahkan kamera ke QR Code barang untuk menambahkan ke daftar peminjaman.</p>
+                      <p className="text-xs text-center text-gray-500 mt-4">
+                          {scanningRowIndex === null 
+                            ? "Mode Scan Beruntun: Scan barang satu per satu untuk menambahkan." 
+                            : "Arahkan kamera ke QR Code barang untuk mengisi baris ini."}
+                      </p>
                   </div>
               </div>
           </div>
@@ -943,4 +973,4 @@ const Loans: React.FC<LoansProps> = ({ role, showToast }) => {
   );
 };
 
-export default Loans;
+export default PeminjamanBarang;

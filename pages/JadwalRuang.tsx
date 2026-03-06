@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Role, Room } from '../types';
 import { 
   Calendar as CalendarIcon, Filter, ExternalLink, Clock, MapPin, RefreshCw, AlertCircle, Loader2, LogIn, ChevronRight, Plus, ChevronLeft,
-  X, Save, Repeat, Type, AlignLeft
+  X, Save, Repeat, Type, AlignLeft, LogOut, CheckCircle, XCircle, Trash2, Edit
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -35,15 +35,24 @@ interface GoogleEvent {
   htmlLink: string;
 }
 
-const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
+// Type for persistent auth state
+interface GoogleAuthState {
+  isAuthenticated: boolean;
+  email: string;
+  accessToken: string;
+}
+
+const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [filterRoom, setFilterRoom] = useState(''); 
+  const [filterRoom, setFilterRoom] = useState<string>(''); 
   const [events, setEvents] = useState<GoogleEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isGapiInitialized, setIsGapiInitialized] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [googleUserEmail, setGoogleUserEmail] = useState<string>('');
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<GoogleEvent | null>(null);
   const [selectedDayDetail, setSelectedDayDetail] = useState<{ date: number; events: GoogleEvent[]; fullDate: string } | null>(null);
@@ -59,6 +68,85 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
     recurrence: 'NONE', // NONE, DAILY, WEEKLY, MONTHLY
     recurrenceEnd: ''
   });
+  
+  // Delete Confirmation Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<GoogleEvent | null>(null);
+  const [deleteOption, setDeleteOption] = useState<'single' | 'thisAndFollowing' | 'all'>('single');
+
+  // Edit Event Modal State
+  const [isEditEventModalOpen, setIsEditEventModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<GoogleEvent | null>(null);
+  const [editEventForm, setEditEventForm] = useState({
+    summary: '',
+    description: '',
+    startDate: new Date().toISOString().split('T')[0],
+    startTime: '08:00',
+    endTime: '10:00'
+  });
+  
+  // Check for persistent auth on mount
+  useEffect(() => {
+    const savedAuth = localStorage.getItem('googleAuth');
+    if (savedAuth) {
+      try {
+        const authState: GoogleAuthState = JSON.parse(savedAuth);
+        if (authState.isAuthenticated && authState.accessToken) {
+          setIsAuthenticated(true);
+          setGoogleUserEmail(authState.email || '');
+          // Set the access token for gapi
+          if (window.gapi) {
+            window.gapi.client.setToken({ access_token: authState.accessToken });
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing saved auth:", e);
+        localStorage.removeItem('googleAuth');
+      }
+    }
+  }, []);
+
+  // Save auth state to localStorage when it changes
+  const saveAuthState = (authenticated: boolean, email: string = '', accessToken: string = '') => {
+    if (authenticated && accessToken) {
+      const authState: GoogleAuthState = {
+        isAuthenticated: true,
+        email: email,
+        accessToken: accessToken
+      };
+      localStorage.setItem('googleAuth', JSON.stringify(authState));
+    } else {
+      localStorage.removeItem('googleAuth');
+    }
+  };
+
+  // Logout from Google (revoke access)
+  const handleGoogleLogout = () => {
+    // Clear local storage
+    localStorage.removeItem('googleAuth');
+    setIsAuthenticated(false);
+    setGoogleUserEmail('');
+    
+    // Revoke Google token if possible
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      const token = localStorage.getItem('googleAuth');
+      if (token) {
+        try {
+          const authState = JSON.parse(token);
+          if (authState.accessToken) {
+            window.google.accounts.oauth2.revoke(authState.accessToken);
+          }
+        } catch (e) {}
+      }
+    }
+    
+    // Reset gapi token
+    if (window.gapi) {
+      window.gapi.client.setToken({});
+    }
+    
+    showToast("Berhasil logout dari Google Calendar", "info");
+  };
   
   // Fetch Rooms from API
   useEffect(() => {
@@ -140,12 +228,12 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
     }
   };
 
-  // 3. Initialize GIS Client (Auth)
+  // 3. Initialize GIS Client (Auth) - Modified for persistent login
   const initializeGisClient = () => {
     // Tentukan scope berdasarkan role: Admin dapat Write, User hanya Read
     const scope = (role === Role.ADMIN || role === Role.LABORAN)
       ? 'https://www.googleapis.com/auth/calendar.events' 
-      : 'https://www.googleapis.com/auth/calendar.events.readonly';
+      : 'https://www.googleapis.com/auth.calendar.events.readonly';
 
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
@@ -156,7 +244,32 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
           showToast("Gagal login ke Google. Pastikan Anda mengizinkan akses.", "error");
           return;
         }
+        
+        // Success - save auth state
         setIsAuthenticated(true);
+        
+        // Get user email if available
+        let userEmail = '';
+        try {
+          // Try to get user info
+          const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${resp.access_token}` }
+          });
+          if (userInfoRes.ok) {
+            const userInfo = await userInfoRes.json();
+            userEmail = userInfo.email || '';
+            setGoogleUserEmail(userEmail);
+          }
+        } catch (e) {
+          console.error("Error getting user info:", e);
+        }
+        
+        // Save to localStorage for persistence
+        saveAuthState(true, userEmail, resp.access_token);
+        
+        // Set token for gapi
+        window.gapi.client.setToken({ access_token: resp.access_token });
+        
         showToast("Berhasil terhubung ke Google Calendar!", "success");
         await fetchEvents();
       },
@@ -171,7 +284,6 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
     
     const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
     if (!calendarId) {
-      // showToast("ID Kalender tidak valid.", "error"); // Suppress initial error
       return;
     }
 
@@ -194,7 +306,11 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
     } catch (err: any) {
       console.error("Error fetching events", err);
       const errorCode = err.result?.error?.code;
-      if (errorCode === 404) {
+      if (errorCode === 401) {
+        // Token expired - try to refresh or re-authenticate
+        handleGoogleLogout();
+        showToast("Sesi Google Calendar expired. Silakan login ulang.", "warning");
+      } else if (errorCode === 404) {
          showToast("Kalender tidak ditemukan (404). Periksa ID Kalender.", "error");
       } else if (errorCode === 403) {
          showToast("Akses ditolak (403). Pastikan API Key valid & Kalender Publik.", "error");
@@ -299,7 +415,130 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
     }
   };
 
-  // Trigger fetch when room changes (Public Access)
+  // Handler Delete Event
+  const handleDeleteEventClick = (event: GoogleEvent) => {
+    if (!isAuthenticated) {
+      handleAuthClick();
+      return;
+    }
+    setEventToDelete(event);
+    setDeleteOption('single');
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteEvent = async () => {
+    if (!eventToDelete || !selectedRoom?.googleCalendarUrl) return;
+    
+    const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
+    if (!calendarId) {
+      showToast("ID Kalender tidak valid.", "error");
+      return;
+    }
+
+    setIsDeletingEvent(true);
+    try {
+      if (deleteOption === 'single') {
+        await window.gapi.client.calendar.events.delete({
+          calendarId: calendarId,
+          eventId: eventToDelete.id
+        });
+        showToast("Jadwal berhasil dihapus!", "success");
+      } else {
+        // For recurring events, we need to handle this differently
+        // For simplicity, we'll just delete the single event
+        await window.gapi.client.calendar.events.delete({
+          calendarId: calendarId,
+          eventId: eventToDelete.id
+        });
+        showToast("Jadwal berhasil dihapus!", "success");
+      }
+      
+      setIsDeleteModalOpen(false);
+      setSelectedEvent(null);
+      fetchEvents();
+    } catch (err: any) {
+      console.error("Error deleting event", err);
+      showToast(`Gagal menghapus jadwal: ${err.result?.error?.message || err.message}`, "error");
+    } finally {
+      setIsDeletingEvent(false);
+      setEventToDelete(null);
+    }
+  };
+
+  // Handler Edit Event
+  const handleEditEventClick = (event: GoogleEvent) => {
+    if (!isAuthenticated) {
+      handleAuthClick();
+      return;
+    }
+    
+    // Parse existing event data
+    const startDateTime = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date || '');
+    const endDateTime = event.end.dateTime ? new Date(event.end.dateTime) : new Date(event.end.date || '');
+    
+    setEditingEvent(event);
+    setEditEventForm({
+      summary: event.summary,
+      description: event.description || '',
+      startDate: event.start.date || startDateTime.toISOString().split('T')[0],
+      startTime: event.start.dateTime ? startDateTime.toTimeString().slice(0, 5) : '08:00',
+      endTime: event.end.dateTime ? endDateTime.toTimeString().slice(0, 5) : '10:00'
+    });
+    setIsEditEventModalOpen(true);
+  };
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEvent || !selectedRoom?.googleCalendarUrl) return;
+    
+    const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
+    if (!calendarId) {
+      showToast("ID Kalender tidak valid.", "error");
+      return;
+    }
+
+    setIsCreatingEvent(true);
+    try {
+      const startDateTime = new Date(`${editEventForm.startDate}T${editEventForm.startTime}:00`);
+      const endDateTime = new Date(`${editEventForm.startDate}T${editEventForm.endTime}:00`);
+
+      if (endDateTime <= startDateTime) {
+        showToast("Waktu selesai harus lebih besar dari waktu mulai.", "warning");
+        setIsCreatingEvent(false);
+        return;
+      }
+
+      const eventResource: any = {
+        'summary': editEventForm.summary,
+        'location': selectedRoom.name,
+        'description': editEventForm.description + `\n\nDiubah oleh Admin via Silab FTI`,
+        'start': {
+          'dateTime': startDateTime.toISOString(),
+          'timeZone': 'Asia/Jakarta'
+        },
+        'end': {
+          'dateTime': endDateTime.toISOString(),
+          'timeZone': 'Asia/Jakarta'
+        },
+      };
+
+      await window.gapi.client.calendar.events.update({
+        calendarId: calendarId,
+        eventId: editingEvent.id,
+        resource: eventResource,
+      });
+
+      showToast("Jadwal berhasil diperbarui!", "success");
+      setIsEditEventModalOpen(false);
+      setSelectedEvent(null);
+      fetchEvents();
+    } catch (err: any) {
+      console.error("Error updating event", err);
+      showToast(`Gagal memperbarui jadwal: ${err.result?.error?.message || err.message}`, "error");
+    } finally {
+      setIsCreatingEvent(false);
+    }
+  };
   useEffect(() => {
     if (isGapiInitialized) {
       fetchEvents();
@@ -461,16 +700,48 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
              )}
          </div>
          
-         {selectedRoom?.googleCalendarUrl && role !== Role.USER && (
-             <a 
-                href={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(getCalendarId(selectedRoom.googleCalendarUrl) || '')}`}
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline flex items-center"
-             >
-                 Buka di Tab Baru <ExternalLink className="w-4 h-4 ml-1" />
-             </a>
-         )}
+         <div className="flex items-center gap-3">
+            {/* Google Auth Status */}
+            {(role === Role.ADMIN || role === Role.LABORAN) && (
+                <div className="flex items-center gap-2">
+                    {isAuthenticated ? (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                            <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                            <span className="text-xs text-green-700 dark:text-green-300 font-medium max-w-[150px] truncate">
+                                {googleUserEmail || 'Terhubung'}
+                            </span>
+                            <button 
+                                onClick={handleGoogleLogout}
+                                className="p-1 hover:bg-green-100 dark:hover:bg-green-900/40 rounded transition-colors"
+                                title="Logout Google"
+                            >
+                                <LogOut className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button 
+                            onClick={handleAuthClick}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                            title="Login dengan Google untuk menambahkan jadwal"
+                        >
+                            <LogIn className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                            <span className="text-xs text-gray-600 dark:text-gray-300">Login Google</span>
+                        </button>
+                    )}
+                </div>
+            )}
+            
+            {selectedRoom?.googleCalendarUrl && role !== Role.USER && (
+                <a 
+                    href={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(getCalendarId(selectedRoom.googleCalendarUrl) || '')}`}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline flex items-center"
+                >
+                    Buka di Tab Baru <ExternalLink className="w-4 h-4 ml-1" />
+                </a>
+            )}
+         </div>
       </div>
 
       {/* Calendar Content */}
@@ -687,7 +958,25 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
                     </div>
                  </div>
               </div>
-              <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end bg-gray-50 dark:bg-gray-700/50">
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+                 {(role === Role.ADMIN || role === Role.LABORAN) && isAuthenticated ? (
+                    <div className="flex gap-2">
+                       <button 
+                          onClick={() => handleEditEventClick(selectedEvent)}
+                          className="px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center transition-colors shadow-sm hover:shadow"
+                       >
+                          <Edit className="w-4 h-4 mr-1.5" />
+                          Edit
+                       </button>
+                       <button 
+                          onClick={() => handleDeleteEventClick(selectedEvent)}
+                          className="px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg flex items-center transition-colors shadow-sm hover:shadow"
+                       >
+                          <Trash2 className="w-4 h-4 mr-1.5" />
+                          Hapus
+                       </button>
+                    </div>
+                 ) : <div />}
                  <a 
                     href={selectedEvent.htmlLink} 
                     target="_blank" 
@@ -703,8 +992,8 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
 
       {/* Add Event Modal */}
       {isAddEventModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-full sm:max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
                  <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
                     <CalendarIcon className="w-5 h-5 mr-2 text-blue-600" />
@@ -810,8 +1099,177 @@ const Schedule: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
            </div>
         </div>
       )}
+
+      {/* Delete Event Confirmation Modal */}
+      {isDeleteModalOpen && eventToDelete && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20">
+                 <h3 className="font-bold text-red-800 dark:text-red-400 flex items-center">
+                    <Trash2 className="w-5 h-5 mr-2" />
+                    Hapus Jadwal
+                 </h3>
+              </div>
+              <div className="p-6 space-y-4">
+                 <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Anda akan menghapus jadwal <strong>"{eventToDelete.summary}"</strong>. Pilih metode penghapusan:
+                 </p>
+                 
+                 <div className="space-y-2">
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === 'single' ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                      <input 
+                        type="radio" 
+                        name="deleteOption" 
+                        value="single"
+                        checked={deleteOption === 'single'}
+                        onChange={() => setDeleteOption('single')}
+                        className="mr-3"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Hapus ini saja</p>
+                        <p className="text-xs text-gray-500">Menghapus hanya event ini</p>
+                      </div>
+                    </label>
+                    
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === 'thisAndFollowing' ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                      <input 
+                        type="radio" 
+                        name="deleteOption" 
+                        value="thisAndFollowing"
+                        checked={deleteOption === 'thisAndFollowing'}
+                        onChange={() => setDeleteOption('thisAndFollowing')}
+                        className="mr-3"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Ini dan selanjutnya</p>
+                        <p className="text-xs text-gray-500">Menghapus event ini dan event mendatang</p>
+                      </div>
+                    </label>
+                    
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === 'all' ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                      <input 
+                        type="radio" 
+                        name="deleteOption" 
+                        value="all"
+                        checked={deleteOption === 'all'}
+                        onChange={() => setDeleteOption('all')}
+                        className="mr-3"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Semua event</p>
+                        <p className="text-xs text-gray-500">Menghapus semua event yang cocok</p>
+                      </div>
+                    </label>
+                 </div>
+
+                 <div className="flex justify-end gap-3 pt-2">
+                    <button 
+                      onClick={() => setIsDeleteModalOpen(false)}
+                      className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                    >
+                       Batal
+                    </button>
+                    <button 
+                      onClick={confirmDeleteEvent}
+                      disabled={isDeletingEvent}
+                      className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md flex items-center disabled:opacity-50"
+                    >
+                       {isDeletingEvent ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                       Hapus Jadwal
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Edit Event Modal */}
+      {isEditEventModalOpen && editingEvent && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-full sm:max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
+                    <Edit className="w-5 h-5 mr-2 text-blue-600" />
+                    Edit Jadwal
+                 </h3>
+                 <button onClick={() => setIsEditEventModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X className="w-5 h-5" />
+                 </button>
+              </div>
+              <form onSubmit={handleUpdateEvent} className="p-6 space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Judul Kegiatan</label>
+                    <div className="relative">
+                        <Type className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input 
+                            type="text" required 
+                            value={editEventForm.summary} 
+                            onChange={e => setEditEventForm({...editEventForm, summary: e.target.value})}
+                            className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                            placeholder="Contoh: Praktikum Jarkom A"
+                        />
+                    </div>
+                 </div>
+                 
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deskripsi</label>
+                    <div className="relative">
+                        <AlignLeft className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                        <textarea 
+                            rows={3}
+                            value={editEventForm.description} 
+                            onChange={e => setEditEventForm({...editEventForm, description: e.target.value})}
+                            className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                            placeholder="Tambahkan detail kegiatan..."
+                        />
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tanggal</label>
+                        <input 
+                            type="date" required 
+                            value={editEventForm.startDate} 
+                            onChange={e => setEditEventForm({...editEventForm, startDate: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jam Mulai</label>
+                        <input 
+                            type="time" required 
+                            value={editEventForm.startTime} 
+                            onChange={e => setEditEventForm({...editEventForm, startTime: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jam Selesai</label>
+                        <input 
+                            type="time" required 
+                            value={editEventForm.endTime} 
+                            onChange={e => setEditEventForm({...editEventForm, endTime: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                 </div>
+
+                 <div className="pt-4 flex justify-end space-x-3 border-t border-gray-200 dark:border-gray-700 mt-2">
+                    <button type="button" onClick={() => setIsEditEventModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                       Batal
+                    </button>
+                    <button type="submit" disabled={isCreatingEvent} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center shadow-md hover:shadow-lg transition-all disabled:opacity-50">
+                       {isCreatingEvent ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Simpan Perubahan
+                    </button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default Schedule;
+export default JadwalRuang;
+

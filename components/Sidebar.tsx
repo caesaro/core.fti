@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap, ArrowRightLeft, BookOpen } from 'lucide-react';
 import { Role } from '../types';
 import nocLogo from "../src/assets/noc.png"; 
 
@@ -11,25 +11,38 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate, isOpen }) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'schedule', label: 'Jadwal Ruang', icon: CalendarRange, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'rooms', label: 'Daftar Ruangan', icon: Calendar, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'create-booking', label: 'Buat Pesanan', icon: PlusCircle, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'bookings', label: 'Pemesanan Saya', icon: FileText, roles: [Role.USER] },
-    { id: 'manage-bookings', label: 'Pesanan Ruang', icon: FileText, roles: [Role.ADMIN, Role.LABORAN] },
-    { id: 'laboran-management', label: 'Manajemen Laboran', icon: Wrench, roles: [Role.ADMIN] },
-    { id: 'pkl-management', label: 'Manajemen PKL', icon: GraduationCap, roles: [Role.ADMIN, Role.LABORAN] },
-    { id: 'loans', label: 'Peminjaman Barang', icon: Box, roles: [Role.ADMIN, Role.LABORAN] },
-    { id: 'inventory', label: 'Inventaris', icon: Monitor, roles: [Role.ADMIN, Role.LABORAN] },
-    { id: 'users', label: 'Manajemen User', icon: Users, roles: [Role.ADMIN] },
-    { id: 'settings', label: 'Pengaturan', icon: Settings, roles: [Role.ADMIN] },
+  const menuGroups = [
+    {
+      title: 'Menu Utama',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+        { id: 'schedule', label: 'Jadwal Ruang', icon: CalendarRange, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+        { id: 'class-schedule', label: 'Jadwal Kuliah', icon: BookOpen, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'rooms', label: 'Daftar Ruangan', icon: Calendar, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+        { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+      ]
+    },
+    {
+      title: 'Transaksi & Layanan',
+      items: [
+        { id: 'create-booking', label: 'Buat Pesanan', icon: PlusCircle, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+        { id: 'bookings', label: 'Pemesanan Saya', icon: FileText, roles: [Role.USER] },
+        { id: 'manage-bookings', label: 'Pesanan Ruang', icon: FileText, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'loans', label: 'Peminjaman Barang', icon: Box, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'item-movements', label: 'Perpindahan Barang', icon: ArrowRightLeft, roles: [Role.ADMIN, Role.LABORAN] },
+      ]
+    },
+    {
+      title: 'Manajemen Data',
+      items: [
+        { id: 'inventory', label: 'Inventaris', icon: Monitor, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'pkl-management', label: 'Manajemen PKL', icon: GraduationCap, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'laboran-management', label: 'Manajemen Laboran', icon: Wrench, roles: [Role.ADMIN] },
+        { id: 'users', label: 'Manajemen User', icon: Users, roles: [Role.ADMIN] },
+        { id: 'settings', label: 'Pengaturan', icon: Settings, roles: [Role.ADMIN] },
+      ]
+    }
   ];
-
-  const filteredItems = menuItems.filter(item => 
-    item.roles.some(r => r.toString().toUpperCase() === currentRole.toString().toUpperCase())
-  );
 
   return (
     <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative md:translate-x-0 z-40 w-64 h-screen transition-transform duration-300 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 print:hidden flex flex-col`}>
@@ -47,27 +60,41 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-2">Menu</div>
-        <nav className="space-y-1">
-          {filteredItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentPage === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Icon className={`w-5 h-5 mr-3 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
+        {menuGroups.map((group, index) => {
+          const visibleItems = group.items.filter(item => 
+            item.roles.some(r => r.toString().toUpperCase() === currentRole.toString().toUpperCase())
+          );
+
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={index} className="mb-6">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">
+                {group.title}
+              </div>
+              <nav className="space-y-1">
+                {visibleItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentPage === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onNavigate(item.id)}
+                      className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 mr-3 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          );
+        })}
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">

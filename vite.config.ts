@@ -11,8 +11,13 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 3000,
-        host: '0.0.0.0',
+        port: 5173, // Sesuaikan dengan port frontend yang biasa Anda gunakan
+        host: true, // Mengekspos ke jaringan lokal (misal: akses dari HP)
+        proxy: {
+          // Semua request ke /api akan diteruskan ke backend di port 5000
+          // Contoh: /api/login -> http://localhost:5000/api/login
+          '/api': 'http://localhost:5000',
+        }
       },
       plugins: [react(), basicSsl()],
       assetsInclude: ['**/*.JPG'],

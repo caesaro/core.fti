@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Booking, BookingStatus, Room } from '../types';
 import { Search, Calendar, Clock, MapPin, User, Share2, Download, X, Wrench, Info, CalendarDays } from 'lucide-react';
@@ -9,20 +10,18 @@ interface EventsProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-// Extend Booking type locally to include tech support fields if they exist in backend response
 interface BookingWithTech extends Booking {
   techSupportPic?: string[];
   techSupportPicName?: string;
   techSupportNeeds?: string;
 }
 
-const Events: React.FC<EventsProps> = ({ showToast }) => {
+const Acara: React.FC<EventsProps> = ({ showToast }) => {
   const [events, setEvents] = useState<BookingWithTech[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<BookingWithTech | null>(null);
   
-  // Share Config State (Checkboxes for PNG)
   const [shareConfig, setShareConfig] = useState({
     title: true,
     time: true,
@@ -45,7 +44,6 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
         
         if (bkRes.ok) {
           const allBookings: BookingWithTech[] = await bkRes.json();
-          // Filter only approved bookings for "Events"
           setEvents(allBookings.filter(b => b.status === BookingStatus.APPROVED));
         }
         if (rmRes.ok) setRooms(await rmRes.json());
@@ -95,7 +93,6 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
 
   return (
     <div className="space-y-6">
-       {/* Header & Search */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Daftar Acara</h1>
@@ -113,7 +110,6 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
         </div>
       </div>
 
-      {/* Event List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEvents.map(event => (
             <div 
@@ -161,12 +157,9 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
         )}
       </div>
 
-      {/* Detail Modal */}
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-5xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up flex flex-col md:flex-row max-h-[90vh]">
-                
-                {/* Left Side: Controls & Info */}
                 <div className="w-full md:w-1/2 p-6 overflow-y-auto border-r border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-bold text-xl text-gray-900 dark:text-white">Detail Acara</h3>
@@ -255,15 +248,12 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
                     </div>
                 </div>
 
-                {/* Right Side: Preview */}
                 <div className="w-full md:w-1/2 bg-gray-100 dark:bg-gray-900 p-6 flex items-center justify-center overflow-hidden relative min-h-[400px]">
                     <div className="absolute top-4 left-4 bg-white/80 dark:bg-black/50 px-2 py-1 rounded text-xs font-bold backdrop-blur-sm z-10">
                         Preview Gambar
                     </div>
                     
-                    {/* The Card to Capture */}
                     <div ref={ticketRef} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm border border-gray-200 relative overflow-hidden">
-                        {/* Decorative Header */}
                         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-purple-600"></div>
                         
                         <div className="flex items-center justify-between mb-6">
@@ -349,7 +339,6 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
                             )}
                         </div>
                         
-                        {/* Footer Watermark */}
                         <div className="absolute bottom-2 right-4 opacity-10">
                             <img src={nocLogo} className="w-24 h-24" />
                         </div>
@@ -362,4 +351,4 @@ const Events: React.FC<EventsProps> = ({ showToast }) => {
   );
 };
 
-export default Events;
+export default Acara;

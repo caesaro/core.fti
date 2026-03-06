@@ -21,7 +21,7 @@ const Inventory: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState<Partial<Equipment>>({
-    id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: ''
+    id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: '', location: ''
   });
 
   // Modal State for Delete Confirmation
@@ -39,7 +39,10 @@ const Inventory: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
+  const [cameras, setCameras] = useState<Array<{id: string, label: string}>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const lastScanRef = useRef<{code: string, time: number}>({code: '', time: 0});
 
   // Reset page when filters change
   useEffect(() => {
@@ -82,7 +85,7 @@ const Inventory: React.FC = () => {
       setAddMode('manual');
     } else {
       setEditingItem(null);
-      setFormData({ id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: '' });
+      setFormData({ id: '', ukswCode: '', name: '', category: '', condition: 'Baik', isAvailable: true, serialNumber: '', location: '' });
       setAddMode('manual');
     }
     setIsModalOpen(true);
@@ -125,7 +128,8 @@ const Inventory: React.FC = () => {
       { header: 'name', key: 'name', width: 30 },
       { header: 'category', key: 'category', width: 15 },
       { header: 'condition', key: 'condition', width: 15 },
-      { header: 'serialNumber', key: 'serialNumber', width: 20 }
+      { header: 'serialNumber', key: 'serialNumber', width: 20 },
+      { header: 'location', key: 'location', width: 25 }
     ];
 
     // Add sample row
@@ -135,7 +139,8 @@ const Inventory: React.FC = () => {
       name: "Barang Baru",
       category: "Elektronik",
       condition: "Baik",
-      serialNumber: "SN12345678"
+      serialNumber: "SN12345678",
+      location: "Rak 1"
     });
 
     // Generate buffer
@@ -162,6 +167,7 @@ const Inventory: React.FC = () => {
       { header: 'Kategori', key: 'category', width: 15 },
       { header: 'Kondisi', key: 'condition', width: 15 },
       { header: 'Serial Number', key: 'serialNumber', width: 20 },
+      { header: 'Lokasi', key: 'location', width: 25 },
       { header: 'Status', key: 'status', width: 15 },
     ];
 
@@ -173,6 +179,7 @@ const Inventory: React.FC = () => {
         category: item.category,
         condition: item.condition,
         serialNumber: item.serialNumber,
+        location: item.location || '',
         status: item.isAvailable ? 'Tersedia' : 'Dipinjam'
       });
     });
@@ -189,9 +196,9 @@ const Inventory: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ["Kode FTI", "Kode UKSW", "Nama Barang", "Kategori", "Kondisi", "Serial Number", "Status"];
+    const headers = ["Kode FTI", "Kode UKSW", "Nama Barang", "Kategori", "Kondisi", "Serial Number", "Lokasi", "Status"];
     const rows = filteredItems.map(item => [
-      item.id, item.ukswCode, item.name, item.category, item.condition, item.serialNumber || '-', item.isAvailable ? 'Tersedia' : 'Dipinjam'
+      item.id, item.ukswCode, item.name, item.category, item.condition, item.serialNumber || '-', item.location || '-', item.isAvailable ? 'Tersedia' : 'Dipinjam'
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.map(c => `"${c}"`).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -214,7 +221,7 @@ const Inventory: React.FC = () => {
       try {
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(buffer);
-          const worksheet = workbook.getWorksheet(1); // Get first sheet
+          const worksheet = workbook.getWorksheet(1);
 
           if (!worksheet) {
              alert("File Excel kosong atau format salah.");
@@ -231,37 +238,67 @@ const Inventory: React.FC = () => {
           
           // Iterate rows starting from 2
           worksheet.eachRow((row, rowNumber) => {
-              if (rowNumber === 1) return; // Skip header row
+              if (rowNumber === 1) return;
 
               const rowData: any = {};
               row.eachCell((cell, colNumber) => {
                   const header = headers[colNumber];
                   if (header) {
-                      // Handle cell values safely
                       rowData[header] = cell.value ? cell.value.toString() : '';
                   }
               });
 
               if (rowData.id && rowData.name) {
-                  // Check for duplicate ID
-                  const id = String(rowData.id);
+                  const id = String(rowData.id).trim();
                   if (!items.some(existing => existing.id === id) && !newItems.some(n => n.id === id)) {
                       newItems.push({
                           id: id,
-                          ukswCode: rowData.ukswCode ? String(rowData.ukswCode) : '',
-                          name: String(rowData.name),
-                          category: rowData.category ? String(rowData.category) : 'Umum',
-                          condition: rowData.condition ? String(rowData.condition) as any : 'Baik',
+                          ukswCode: rowData.ukswCode ? String(rowData.ukswCode).trim() : '',
+                          name: String(rowData.name).trim(),
+                          category: rowData.category ? String(rowData.category).trim() : 'Umum',
+                          condition: rowData.condition ? String(rowData.condition).trim() as any : 'Baik',
                           isAvailable: true,
-                          serialNumber: rowData.serialNumber ? String(rowData.serialNumber) : ''
+                          serialNumber: rowData.serialNumber ? String(rowData.serialNumber).trim() : '',
+                          location: rowData.location ? String(rowData.location).trim() : ''
                       } as Equipment);
                   }
               }
           });
 
           if (newItems.length > 0) {
-              setItems(prev => [...prev, ...newItems]);
-              alert(`Berhasil mengimport ${newItems.length} barang.`);
+              let successCount = 0;
+              let errorCount = 0;
+              const errorIds: string[] = [];
+
+              for (const item of newItems) {
+                  try {
+                      const res = await api('/api/inventory', {
+                          method: 'POST',
+                          data: item
+                      });
+                      if (res.ok) {
+                          successCount++;
+                      } else {
+                          errorCount++;
+                          errorIds.push(item.id);
+                      }
+                  } catch (err) {
+                      console.error(`Gagal menyimpan item ${item.id}:`, err);
+                      errorCount++;
+                      errorIds.push(item.id);
+                  }
+              }
+
+              await fetchItems();
+
+              if (successCount > 0 && errorCount === 0) {
+                  alert(`Berhasil mengimport ${successCount} barang ke database.`);
+              } else if (successCount > 0 && errorCount > 0) {
+                  alert(`Berhasil mengimport ${successCount} barang. ${errorCount} barang gagal (ID: ${errorIds.join(', ')}).`);
+              } else {
+                  alert(`Gagal mengimport data. Pastikan ID belum ada di database.`);
+              }
+              
               setIsModalOpen(false);
           } else {
               alert("Tidak ada data valid yang diimport. Pastikan ID unik dan format benar.");
@@ -295,9 +332,36 @@ const Inventory: React.FC = () => {
     setQrItem(item);
   };
 
-  // --- Scanner Logic ---
+  // Scanner Logic
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const scanId = params.get('scan');
+
+    if (scanId && items.length > 0) {
+      const foundItem = items.find(i => i.id === scanId);
+      if (foundItem) {
+        setViewDetailItem(foundItem);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [items]);
+
   useEffect(() => {
     if (isScannerOpen) {
+        Html5Qrcode.getCameras().then(devices => {
+            if (devices && devices.length > 0) {
+                setCameras(devices);
+                const backCam = devices.find(d => 
+                    d.label.toLowerCase().includes('back') || 
+                    d.label.toLowerCase().includes('belakang') || 
+                    d.label.toLowerCase().includes('environment')
+                );
+                setSelectedCameraId(backCam ? backCam.id : devices[0].id);
+            }
+        }).catch(err => {
+            console.warn("Error fetching cameras", err);
+        });
+
         const html5QrCode = new Html5Qrcode("inventory-reader");
         scannerRef.current = html5QrCode;
     } else {
@@ -317,22 +381,28 @@ const Inventory: React.FC = () => {
     };
   }, [isScannerOpen]);
 
+  const onScanSuccess = (decodedText: string) => {
+      const now = Date.now();
+      if (decodedText === lastScanRef.current.code && now - lastScanRef.current.time < 2000) return;
+      lastScanRef.current = { code: decodedText, time: now };
+      
+      const foundItem = items.find(i => i.id === decodedText);
+      if (foundItem) {
+          handleStopScan();
+          setIsScannerOpen(false);
+          setViewDetailItem(foundItem);
+      } else {
+          alert(`Barang dengan ID ${decodedText} tidak ditemukan.`);
+      }
+  };
+
   const handleStartScan = async () => {
-      if (!scannerRef.current) return;
+      if (!scannerRef.current || !selectedCameraId) return;
       try {
           await scannerRef.current.start(
-              { facingMode: "environment" },
+              selectedCameraId, 
               { fps: 10, qrbox: 250, aspectRatio: 1.0 },
-              (decodedText) => {
-                  const foundItem = items.find(i => i.id === decodedText);
-                  if (foundItem) {
-                      handleStopScan();
-                      setIsScannerOpen(false);
-                      setViewDetailItem(foundItem);
-                  } else {
-                      alert(`Barang dengan ID ${decodedText} tidak ditemukan.`);
-                  }
-              },
+              onScanSuccess,
               () => {}
           );
           setIsScanning(true);
@@ -395,7 +465,6 @@ const Inventory: React.FC = () => {
     }
   };
 
-  // Get Unique Categories
   const categories = Array.from(new Set(items.map(i => i.category)));
 
   return (
@@ -524,6 +593,7 @@ const Inventory: React.FC = () => {
                             <th className="px-6 py-4">Nama Barang</th>
                             <th className="px-6 py-4">Kategori</th>
                             <th className="px-6 py-4">Kondisi</th>
+                            <th className="px-6 py-4">Lokasi</th>
                             <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4 text-right print:hidden">Aksi</th>
                         </tr>
@@ -541,6 +611,7 @@ const Inventory: React.FC = () => {
                                         {item.condition}
                                     </span>
                                 </td>
+                                <td className="px-6 py-4 text-gray-500 dark:text-gray-400">{item.location || '-'}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium print:border print:border-gray-400 ${item.isAvailable ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
                                         {item.isAvailable ? 'Tersedia' : 'Dipinjam'}
@@ -556,7 +627,7 @@ const Inventory: React.FC = () => {
                             </tr>
                         )) : (
                            <tr>
-                              <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                              <td colSpan={9} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                                  <div className="flex flex-col items-center justify-center">
                                     <Box className="w-12 h-12 text-gray-300 mb-3" />
                                     <p>Tidak ada barang yang ditemukan.</p>
@@ -568,7 +639,6 @@ const Inventory: React.FC = () => {
                 </table>
             </div>
             
-            {/* Pagination Footer */}
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
                <div className="text-sm text-gray-500 dark:text-gray-400">
                   Menampilkan <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length > 0 ? indexOfFirstItem + 1 : 0}</span> sampai <span className="font-medium text-gray-900 dark:text-white">{Math.min(indexOfLastItem, filteredItems.length)}</span> dari <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length}</span> data
@@ -596,10 +666,9 @@ const Inventory: React.FC = () => {
             </div>
       </div>
 
-      {/* Form Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-full sm:max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
                  <h3 className="font-bold text-gray-900 dark:text-white">
                     {editingItem ? 'Edit Barang' : 'Tambah Barang Baru'}
@@ -647,7 +716,7 @@ const Inventory: React.FC = () => {
                             type="text" required 
                             value={formData.id} 
                             onChange={e => setFormData({...formData, id: e.target.value})}
-                            disabled={!!editingItem} // ID tidak bisa diedit setelah dibuat
+                            disabled={!!editingItem}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                             placeholder="FTI-XXX-001"
                         />
@@ -691,12 +760,22 @@ const Inventory: React.FC = () => {
                         onChange={e => setFormData({...formData, condition: e.target.value as any})}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                     >
-                        <option value="Baik">Baik</option>
+                    <option value="Baik">Baik</option>
                         <option value="Rusak Ringan">Rusak Ringan</option>
                         <option value="Rusak Berat">Rusak Berat</option>
                     </select>
                  </div>
 
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi / Rak</label>
+                    <input 
+                        type="text" 
+                        value={formData.location || ''} 
+                        onChange={e => setFormData({...formData, location: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        placeholder="Contoh: Rak 1, Ruang 301, Laboratorium"
+                    />
+                 </div>
 
                  <div className="flex items-center space-x-2 pt-2">
                     <input 
@@ -720,14 +799,14 @@ const Inventory: React.FC = () => {
                     </button>
                  </div>
               </form>
-              ) : ( // Excel Import Mode
+              ) : (
                 <div className="p-6 space-y-6 animate-fade-in-up">
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4">
                         <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
                             <AlertCircle className="w-4 h-4 mr-2" /> Petunjuk Import
                         </h4>
                         <p className="text-xs text-blue-700 dark:text-blue-400 mb-3">
-                            Gunakan file Excel (.xlsx) dengan header: <code>id, ukswCode, name, category, condition, serialNumber</code>.
+                            Gunakan file Excel (.xlsx) dengan header: <code>id, ukswCode, name, category, condition, serialNumber, location</code>.
                             Pastikan <strong>id</strong> (Kode FTI) unik dan belum ada di database.
                         </p>
                         <button 
@@ -760,7 +839,6 @@ const Inventory: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
@@ -791,7 +869,6 @@ const Inventory: React.FC = () => {
         </div>
       )}
 
-      {/* Detail Item Modal */}
       {viewDetailItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
@@ -824,6 +901,10 @@ const Inventory: React.FC = () => {
                           <span className="font-mono font-medium text-gray-900 dark:text-white">{viewDetailItem.serialNumber || '-'}</span>
                       </div>
                       <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                          <span className="text-gray-500 dark:text-gray-400">Lokasi</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{viewDetailItem.location || '-'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
                           <span className="text-gray-500 dark:text-gray-400">Kondisi</span>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getConditionColor(viewDetailItem.condition)}`}>
                               {viewDetailItem.condition}
@@ -850,7 +931,6 @@ const Inventory: React.FC = () => {
         </div>
       )}
 
-      {/* Scanner Modal */}
       {isScannerOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-fade-in-up relative">
@@ -863,6 +943,28 @@ const Inventory: React.FC = () => {
                   <div className="p-6">
                       <h3 className="text-lg font-bold text-center mb-4 text-gray-900 dark:text-white">Scan QR Code Barang</h3>
                       
+                      {(window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')) && (
+                        <div className="mb-4 p-3 bg-yellow-50 text-yellow-800 text-xs rounded-lg border border-yellow-200 text-left">
+                            <strong>Kamera tidak muncul?</strong><br/>
+                            Browser memblokir akses kamera pada jaringan HTTP. Gunakan <strong>HTTPS</strong> atau akses via localhost.
+                        </div>
+                      )}
+
+                      <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pilih Kamera</label>
+                          <select 
+                              value={selectedCameraId}
+                              onChange={(e) => setSelectedCameraId(e.target.value)}
+                              disabled={isScanning}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-50 cursor-pointer"
+                          >
+                              {cameras.length === 0 && <option>Mendeteksi kamera...</option>}
+                              {cameras.map(cam => (
+                                  <option key={cam.id} value={cam.id}>{cam.label || `Kamera ${cam.id.slice(0,5)}...`}</option>
+                              ))}
+                          </select>
+                      </div>
+
                       <div className="relative w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-900 min-h-[250px] border border-gray-200 dark:border-gray-700">
                           <div id="inventory-reader" className="w-full h-full"></div>
                           {!isScanning && (
@@ -872,7 +974,7 @@ const Inventory: React.FC = () => {
                               </div>
                           )}
                           {isScanning && torchSupported && (
-                              <button onClick={toggleTorch} className="absolute top-4 right-4 z-20 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm">
+                              <button onClick={toggleTorch} className="absolute top-4 right-4 z-20 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm" title={torchOn ? "Matikan Flash" : "Nyalakan Flash"}>
                                   {torchOn ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
                               </button>
                           )}
@@ -880,7 +982,7 @@ const Inventory: React.FC = () => {
                       
                       <div className="mt-4 flex justify-center">
                           {!isScanning ? (
-                              <button onClick={handleStartScan} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors flex items-center">
+                              <button onClick={handleStartScan} disabled={!selectedCameraId || cameras.length === 0} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors flex items-center disabled:opacity-50">
                                   <Camera className="w-4 h-4 mr-2" /> Mulai Scan
                               </button>
                           ) : (
@@ -889,12 +991,13 @@ const Inventory: React.FC = () => {
                               </button>
                           )}
                       </div>
+
+                      <p className="text-xs text-center text-gray-500 mt-4">Arahkan kamera ke QR Code barang untuk melihat detail.</p>
                   </div>
               </div>
           </div>
       )}
 
-      {/* QR Code Modal */}
       {qrItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
@@ -910,7 +1013,7 @@ const Inventory: React.FC = () => {
               <div className="p-8 flex flex-col items-center justify-center bg-white">
                   <div className="border-4 border-gray-900 p-2 rounded-lg">
                     <QRCode 
-                        value={`${window.location.origin}/loans?scan=${qrItem.id}`} 
+                        value={qrItem.id}
                         size={200}
                     />
                   </div>
@@ -929,3 +1032,4 @@ const Inventory: React.FC = () => {
 };
 
 export default Inventory;
+

@@ -64,7 +64,7 @@ app.use(async (req, res, next) => {
 
 // Test Endpoint
 app.get('/', (req, res) => {
-  res.send('Backend API Silab FTI is running on port 5000');
+  res.send('Backend API CORE.FTI is running on port 5000');
 });
 
 // Endpoint untuk mengambil data users
@@ -251,20 +251,19 @@ app.put('/api/users/:id/reset-password', async (req, res) => {
   }
 });
 
-// Create User (Admin)
+// Create User (Admin) - Set password to NULL so user must create new password on first login
 app.post('/api/users', async (req, res) => {
   const { name, email, username, role, identifier, status, phone } = req.body;
   try {
     const check = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
     if (check.rows.length > 0) return res.status(400).json({ error: 'Email atau Username sudah terdaftar.' });
 
-    // Default password for admin-created users: "12345678"
-    const hashedPassword = await bcrypt.hash("12345678", 10);
+    // Set password to NULL so user must reset password like admin reset
     const id = `USER-${Date.now()}`;
 
     await pool.query(
-      "INSERT INTO users (id, nama, email, username, password, role, identifier, status, telepon) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-      [id, name, email, username, hashedPassword, role, identifier, status, phone]
+      "INSERT INTO users (id, nama, email, username, password, role, identifier, status, telepon) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8)",
+      [id, name, email, username, role, identifier, status, phone]
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -504,7 +503,129 @@ app.delete('/api/pkl/:id', async (req, res) => {
   }
 });
 
-// --- INVENTORY (Tabel: inventory) ---
+// --- CLASS SCHEDULES (Jadwal Kuliah) ---
+
+// Get All Class Schedules
+app.get('/api/class-schedules', async (req, res) => {
+  try {
+    const { semester, academicYear, roomId } = req.query;
+    
+    let query = 'SELECT cs.*, r.name as room_name FROM class_schedules cs LEFT JOIN rooms r ON cs.room_id = r.id';
+    let params = [];
+    let conditions = [];
+    
+    if (semester) {
+      params.push(semester);
+      conditions.push(`cs.semester = $${params.length}`);
+    }
+    
+    if (academicYear) {
+      params.push(academicYear);
+      conditions.push(`cs.academic_year = $${params.length}`);
+    }
+    
+    if (roomId) {
+      params.push(roomId);
+      conditions.push(`cs.room_id = $${params.length}`);
+    }
+    
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    query += ' ORDER BY cs.day_of_week, cs.start_time';
+    
+    const result = await pool.query(query, params);
+    
+    const schedules = result.rows.map(row => ({
+      id: row.id,
+      courseCode: row.course_code,
+      courseName: row.course_name,
+      classGroup: row.class_group,
+      dayOfWeek: row.day_of_week,
+      startTime: row.start_time ? row.start_time.substring(0, 5) : '',
+      endTime: row.end_time ? row.end_time.substring(0, 5) : '',
+      semester: row.semester,
+      academicYear: row.academic_year,
+      roomId: row.room_id,
+      roomName: row.room_name,
+      lecturerName: row.lecturer_name
+    }));
+    
+    res.json(schedules);
+  } catch (err) {
+    console.error('Get class schedules error:', err);
+    res.status(500).json({ error: 'Gagal mengambil jadwal kelas.' });
+  }
+});
+
+// Add New Class Schedule
+app.post('/api/class-schedules', async (req, res) => {
+  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName } = req.body;
+  
+  try {
+    const id = `CLASS-${Date.now()}`;
+    
+    await pool.query(
+      `INSERT INTO class_schedules (id, course_code, course_name, class_group, day_of_week, start_time, end_time, semester, academic_year, room_id, lecturer_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [id, courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null]
+    );
+    
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('Add class schedule error:', err);
+    res.status(500).json({ error: 'Gagal menambah jadwal kelas.' });
+  }
+});
+
+// Update Class Schedule
+app.put('/api/class-schedules/:id', async (req, res) => {
+  const { id } = req.params;
+  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName } = req.body;
+  
+  try {
+    await pool.query(
+      `UPDATE class_schedules SET course_code = $1, course_name = $2, class_group = $3, day_of_week = $4, start_time = $5, end_time = $6, semester = $7, academic_year = $8, room_id = $9, lecturer_name = $10, updated_at = CURRENT_TIMESTAMP WHERE id = $11`,
+      [courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null, id]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update class schedule error:', err);
+    res.status(500).json({ error: 'Gagal update jadwal kelas.' });
+  }
+});
+
+// Delete Class Schedule
+app.delete('/api/class-schedules/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM class_schedules WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete class schedule error:', err);
+    res.status(500).json({ error: 'Gagal menghapus jadwal kelas.' });
+  }
+});
+
+// Delete All Class Schedules by Semester (Reset)
+app.delete('/api/class-schedules', async (req, res) => {
+  const { semester, academicYear } = req.body;
+  
+  if (!semester || !academicYear) {
+    return res.status(400).json({ error: 'Semester dan academic year wajib diisi.' });
+  }
+  
+  try {
+    await pool.query('DELETE FROM class_schedules WHERE semester = $1 AND academic_year = $2', [semester, academicYear]);
+    res.json({ success: true, message: 'Semua jadwal kelas semester tersebut telah dihapus.' });
+  } catch (err) {
+    console.error('Delete all class schedules error:', err);
+    res.status(500).json({ error: 'Gagal menghapus jadwal kelas.' });
+  }
+});
+
+// --- INVENTORY
 
 app.get('/api/inventory', async (req, res) => {
   try {
@@ -516,7 +637,8 @@ app.get('/api/inventory', async (req, res) => {
       category: row.kategori,
       condition: row.kondisi,
       isAvailable: row.is_available,
-      serialNumber: row.serial_number
+      serialNumber: row.serial_number,
+      location: row.lokasi
     }));
     res.json(items);
   } catch (err) {
@@ -526,11 +648,11 @@ app.get('/api/inventory', async (req, res) => {
 });
 
 app.post('/api/inventory', async (req, res) => {
-  const { id, ukswCode, name, category, condition, isAvailable, serialNumber } = req.body;
+  const { id, ukswCode, name, category, condition, isAvailable, serialNumber, location } = req.body;
   try {
     await pool.query(
-      'INSERT INTO inventory (id, uksw_code, nama, kategori, kondisi, is_available, serial_number) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, ukswCode, name, category, condition, isAvailable, serialNumber]
+      'INSERT INTO inventory (id, uksw_code, nama, kategori, kondisi, is_available, serial_number, lokasi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, ukswCode, name, category, condition, isAvailable, serialNumber, location || '']
     );
     res.json({ success: true });
   } catch (err) {
@@ -540,11 +662,11 @@ app.post('/api/inventory', async (req, res) => {
 });
 
 app.put('/api/inventory/:id', async (req, res) => {
-  const { ukswCode, name, category, condition, isAvailable, serialNumber } = req.body;
+  const { ukswCode, name, category, condition, isAvailable, serialNumber, location } = req.body;
   try {
     await pool.query(
-      'UPDATE inventory SET uksw_code=$1, nama=$2, kategori=$3, kondisi=$4, is_available=$5, serial_number=$6 WHERE id=$7',
-      [ukswCode, name, category, condition, isAvailable, serialNumber, req.params.id]
+      'UPDATE inventory SET uksw_code=$1, nama=$2, kategori=$3, kondisi=$4, is_available=$5, serial_number=$6, lokasi=$7 WHERE id=$8',
+      [ukswCode, name, category, condition, isAvailable, serialNumber, location || '', req.params.id]
     );
     res.json({ success: true });
   } catch (err) {
@@ -559,6 +681,137 @@ app.delete('/api/inventory/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+
+// --- ITEM MOVEMENTS (Tabel: item_movements) ---
+
+app.get('/api/item-movements', async (req, res) => {
+  try {
+    const { inventoryId } = req.query;
+    let query = `
+      SELECT m.*, i.nama as inventory_name 
+      FROM item_movements m 
+      LEFT JOIN inventory i ON m.inventory_id = i.id
+    `;
+    let params = [];
+    
+    if (inventoryId) {
+      query += ' WHERE m.inventory_id = $1';
+      params.push(inventoryId);
+    }
+    
+    query += ' ORDER BY m.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    const movements = result.rows.map(row => ({
+      id: row.id,
+      inventoryId: row.inventory_id,
+      inventoryName: row.inventory_name,
+      movementDate: row.movement_date ? new Date(row.movement_date).toLocaleDateString('en-CA') : '',
+      movementType: row.movement_type,
+      fromPerson: row.from_person,
+      toPerson: row.to_person,
+      movedBy: row.moved_by,
+      quantity: row.quantity,
+      fromLocation: row.from_location,
+      toLocation: row.to_location,
+      notes: row.notes,
+      loanId: row.loan_id,
+      createdAt: row.created_at
+    }));
+    res.json(movements);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+app.post('/api/item-movements', async (req, res) => {
+  const { inventoryId, movementDate, movementType, fromPerson, toPerson, movedBy, quantity, fromLocation, toLocation, notes, loanId } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const id = `MOV-${Date.now()}`;
+    
+    // Insert movement record
+    await client.query(
+      `INSERT INTO item_movements (id, inventory_id, movement_date, movement_type, from_person, to_person, moved_by, quantity, from_location, to_location, notes, loan_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, inventoryId, movementDate, movementType, fromPerson, toPerson, movedBy, quantity || 1, fromLocation, toLocation, notes, loanId || null]
+    );
+    
+    // Update inventory location to new location
+    if (toLocation) {
+      await client.query('UPDATE inventory SET lokasi = $1 WHERE id = $2', [toLocation, inventoryId]);
+    }
+    
+    await client.query('COMMIT');
+    res.json({ success: true, id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/item-movements/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM item_movements WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'DB Error' });
+  }
+});
+
+// Undo Movement (Batalkan Perpindahan Terakhir)
+app.post('/api/item-movements/:id/undo', async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Ambil data movement yang mau di-undo
+    const moveRes = await client.query('SELECT * FROM item_movements WHERE id = $1', [id]);
+    if (moveRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Data perpindahan tidak ditemukan.' });
+    }
+    const movement = moveRes.rows[0];
+
+    // 2. Validasi: Jangan izinkan undo jika berasal dari Peminjaman (harus lewat menu Loans)
+    if (movement.loan_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Perpindahan ini terkait Peminjaman. Gunakan menu Peminjaman untuk membatalkan.' });
+    }
+
+    // 3. Validasi: Cek apakah ini movement terakhir untuk barang tersebut?
+    const lastRes = await client.query(
+      'SELECT id FROM item_movements WHERE inventory_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [movement.inventory_id]
+    );
+
+    if (lastRes.rows.length > 0 && lastRes.rows[0].id !== id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Hanya perpindahan terakhir yang dapat dibatalkan demi konsistensi data.' });
+    }
+
+    // 4. Kembalikan lokasi barang ke 'from_location' & Hapus record
+    await client.query('UPDATE inventory SET lokasi = $1 WHERE id = $2', [movement.from_location || '', movement.inventory_id]);
+    await client.query('DELETE FROM item_movements WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Perpindahan berhasil dibatalkan.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Undo movement error:', err);
+    res.status(500).json({ error: 'Gagal membatalkan perpindahan.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -760,7 +1013,10 @@ app.get('/api/bookings', async (req, res) => {
         const result = await pool.query(`
             SELECT b.*, u.nama as user_name, r.name as room_name, 
                    (SELECT string_agg(s.nama, ', ') FROM staff s WHERE s.id = ANY(b.tech_support_pic)) as tech_pic_name,
-                   bs.schedule_date, bs.start_time, bs.end_time
+                   bs.schedule_date, bs.start_time, bs.end_time,
+                   (SELECT json_agg(json_build_object('date', bs2.schedule_date, 'startTime', bs2.start_time, 'endTime', bs2.end_time) ORDER BY bs2.schedule_date)
+                    FROM booking_schedules bs2 
+                    WHERE bs2.booking_id = b.id) as all_schedules
             FROM bookings b
             JOIN users u ON b.user_id = u.id
             JOIN rooms r ON b.room_id = r.id
@@ -779,6 +1035,7 @@ app.get('/api/bookings', async (req, res) => {
             date: row.schedule_date ? new Date(row.schedule_date).toLocaleDateString('en-CA') : '',
             startTime: row.start_time ? row.start_time.substring(0, 5) : '',
             endTime: row.end_time ? row.end_time.substring(0, 5) : '',
+            schedules: row.all_schedules || [], // All schedules as array
             status: row.status,
             proposalFile: row.file_proposal ? `data:application/pdf;base64,${row.file_proposal.toString('base64')}` : null,
             techSupportPic: row.tech_support_pic || [], // Ensure array
@@ -1016,7 +1273,7 @@ app.get('/api/loans', async (req, res) => {
 });
 
 app.post('/api/loans', async (req, res) => {
-    const { equipmentIds, borrowerName, nim, guarantee, borrowDate, borrowTime, borrowOfficer } = req.body;
+    const { equipmentIds, borrowerName, nim, guarantee, borrowDate, borrowTime, borrowOfficer, location } = req.body;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1033,7 +1290,27 @@ app.post('/api/loans', async (req, res) => {
                 'INSERT INTO loans (id, transaction_id, inventory_id, status) VALUES ($1, $2, $3, $4)',
                 [loanId, trxId, eqId, 'Dipinjam']
             );
+            
+            // Ambil lokasi lama sebelum update
+            const invRes = await client.query('SELECT nama, lokasi FROM inventory WHERE id = $1', [eqId]);
+            const invName = invRes.rows[0]?.nama || eqId;
+            const fromLocation = invRes.rows[0]?.lokasi || '';
+            
+            // Update inventory is_available
             await client.query('UPDATE inventory SET is_available = FALSE WHERE id = $1', [eqId]);
+            
+            // Auto-create item_movement untuk peminjaman
+            const movId = `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            await client.query(
+                `INSERT INTO item_movements (id, inventory_id, movement_date, movement_type, from_person, to_person, moved_by, quantity, from_location, to_location, loan_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [movId, eqId, borrowDate, 'Peminjaman', borrowOfficer, borrowerName, borrowOfficer, 1, fromLocation, location || fromLocation, loanId]
+            );
+            
+            // Update lokasi inventory
+            if (location) {
+                await client.query('UPDATE inventory SET lokasi = $1 WHERE id = $2', [location, eqId]);
+            }
         }
 
         await client.query('COMMIT');
@@ -1263,7 +1540,7 @@ app.get('/api/settings/backup', (req, res) => {
   // Siapkan Environment Variables untuk pg_dump
   const env = {
     ...process.env,
-    PGHOST: process.env.DB_HOST || 'localhost',
+    PGHOST: process.env.DB_HOST || '0.0.0.0',
     PGPORT: process.env.DB_PORT || '5432',
     PGUSER: process.env.DB_USER || 'corefti',
     PGPASSWORD: process.env.DB_PASSWORD || 'c0r3ft1',

@@ -3,12 +3,12 @@ import { Room, Booking } from '../types';
 import { Calendar, Clock, User, FileText, Check, Loader2, Plus, Trash2, Upload, MapPin } from 'lucide-react';
 import { api } from '../services/api';
 
-interface CreateBookingProps {
+interface BuatPesananProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
   onNavigate: (page: string) => void;
 }
 
-const CreateBooking: React.FC<CreateBookingProps> = ({ showToast, onNavigate }) => {
+const BuatPesanan: React.FC<BuatPesananProps> = ({ showToast, onNavigate }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -134,13 +134,13 @@ const CreateBooking: React.FC<CreateBookingProps> = ({ showToast, onNavigate }) 
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6 px-2 sm:px-0">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Buat Pesanan Baru</h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Isi formulir untuk mengajukan peminjaman ruangan</p>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-8 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <form onSubmit={handleSubmit} className="space-y-6">
             {/* Room Selection */}
             <div>
@@ -281,4 +281,5 @@ const CreateBooking: React.FC<CreateBookingProps> = ({ showToast, onNavigate }) 
   );
 };
 
-export default CreateBooking;
+export default BuatPesanan;
+

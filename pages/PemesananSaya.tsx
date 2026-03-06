@@ -6,12 +6,12 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import nocLogo from "../src/assets/noc.png";
 
-interface MyBookingsProps {
+interface PemesananSayaProps {
   userId: string;
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
+const PemesananSaya: React.FC<PemesananSayaProps> = ({ userId, showToast }) => {
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,7 +53,6 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
 
   const handleCancelBooking = (id: string) => {
     if (confirm("Apakah Anda yakin ingin membatalkan permohonan peminjaman ini?")) {
-      // Di aplikasi nyata, ini akan menjadi panggilan API untuk delete
       setMyBookings(prev => prev.filter(b => b.id !== id));
       showToast("Permohonan peminjaman berhasil dibatalkan.", "info");
     }
@@ -72,19 +71,18 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
 
   const handleDownloadProof = async (booking: Booking) => {
       setProofBooking(booking);
-      // Tunggu render state proofBooking
       setTimeout(async () => {
           if (proofRef.current) {
               try {
                   showToast("Sedang membuat PDF...", "info");
                   const canvas = await html2canvas(proofRef.current, { 
-                      scale: 2, // Resolusi tinggi
+                      scale: 2,
                       backgroundColor: '#ffffff',
                       useCORS: true 
                   });
                   const imgData = canvas.toDataURL('image/png');
                   
-                  const pdf = new jsPDF('p', 'mm', 'a4'); // Portrait, Millimeter, A4
+                  const pdf = new jsPDF('p', 'mm', 'a4');
                   const pdfWidth = pdf.internal.pageSize.getWidth();
                   const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
                   
@@ -115,7 +113,6 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
         </div>
       </div>
 
-      {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center">
              <div className="p-3 bg-blue-100 text-blue-600 rounded-lg mr-4">
@@ -147,7 +144,6 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        {/* Search Bar */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="relative w-full md:w-96">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -256,17 +252,14 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
         </div>
       </div>
 
-      {/* Hidden Proof Ticket Template (A4 Size) */}
       <div className="absolute -left-[9999px] top-0">
         <div ref={proofRef} className="w-[210mm] min-h-[297mm] bg-white p-12 font-sans text-gray-900 relative">
-            {/* Watermark */}
             <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none z-0">
                 <img src={nocLogo} className="w-[500px] h-[500px] object-contain" />
             </div>
 
             {proofBooking && (
                 <div className="relative z-10">
-                    {/* Header */}
                     <div className="flex items-center justify-between border-b-4 border-blue-900 pb-6 mb-8">
                         <div className="flex items-center gap-4">
                             <img src={nocLogo} alt="Logo" className="w-24 h-24 object-contain" />
@@ -282,14 +275,12 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
                         </div>
                     </div>
 
-                    {/* Status Badge */}
                     <div className="flex justify-end mb-8">
                         <div className="px-6 py-2 bg-green-100 text-green-800 border border-green-200 rounded-lg font-bold text-lg uppercase tracking-widest">
                             DISETUJUI
                         </div>
                     </div>
 
-                    {/* Content */}
                     <div className="space-y-8">
                         <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
                             <h4 className="text-sm font-bold text-gray-500 uppercase mb-4 border-b border-gray-200 pb-2">Detail Kegiatan</h4>
@@ -330,18 +321,17 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Footer */}
                     <div className="mt-20 pt-8 border-t border-gray-200 flex justify-between items-end">
                         <div className="text-xs text-gray-400">
                             <p>Dokumen ini dibuat secara otomatis oleh sistem CORE.FTI.</p>
                             <p>Dicetak pada: {new Date().toLocaleString('id-ID')}</p>
                         </div>
                         <div className="text-center">
-                            <div className="h-20 w-40 mb-2"></div> {/* Space for signature if needed */}
+                            <div className="h-20 w-40 mb-2"></div>
                             <p className="text-sm font-bold text-gray-700 uppercase">Admin Laboratorium</p>
                         </div>
+                    </div>
                     </div>
                 </div>
             )}
@@ -351,4 +341,4 @@ const MyBookings: React.FC<MyBookingsProps> = ({ userId, showToast }) => {
   );
 };
 
-export default MyBookings;
+export default PemesananSaya;

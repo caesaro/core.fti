@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { ToastMessage } from '../types';
 
 interface ToastProps {
@@ -17,44 +17,48 @@ const Toast: React.FC<ToastProps> = ({ toasts, removeToast }) => {
   );
 };
 
-const ToastItem: React.FC<{ toast: ToastMessage; removeToast: (id: string) => void }> = ({ toast, removeToast }) => {
+const ToastItem = ({ toast, removeToast }: { toast: ToastMessage; removeToast: (id: string) => void }) => {
+  // Auto-dismiss setelah 5 detik
   useEffect(() => {
     const timer = setTimeout(() => {
       removeToast(toast.id);
-    }, 4000); // Auto dismiss after 4s
+    }, 5000);
 
     return () => clearTimeout(timer);
   }, [toast.id, removeToast]);
 
-  const getIcon = () => {
-    switch (toast.type) {
-      case 'success': return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'error': return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'warning': return <AlertCircle className="w-5 h-5 text-yellow-500" />;
-      default: return <Info className="w-5 h-5 text-blue-500" />;
-    }
+  const icons = {
+    success: <CheckCircle className="w-5 h-5 text-green-500" />,
+    error: <AlertCircle className="w-5 h-5 text-red-500" />,
+    info: <Info className="w-5 h-5 text-blue-500" />,
+    warning: <AlertTriangle className="w-5 h-5 text-yellow-500" />,
   };
 
-  const getBgColor = () => {
-    switch (toast.type) {
-      case 'success': return 'bg-white border-green-500';
-      case 'error': return 'bg-white border-red-500';
-      case 'warning': return 'bg-white border-yellow-500';
-      default: return 'bg-white border-blue-500';
-    }
+  const styles = {
+    success: 'bg-green-50 border-green-200 text-green-800',
+    error: 'bg-red-50 border-red-200 text-red-800',
+    info: 'bg-blue-50 border-blue-200 text-blue-800',
+    warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
   };
 
   return (
-    <div className={`pointer-events-auto flex items-center p-4 rounded-lg shadow-lg border-l-4 ${getBgColor()} dark:bg-gray-800 dark:text-white min-w-[300px] animate-fade-in-up transition-all`}>
-      <div className="flex-shrink-0 mr-3">
-        {getIcon()}
+    <div 
+      className={`
+        pointer-events-auto flex items-start p-4 rounded-lg border shadow-lg 
+        transition-all duration-300 animate-slide-in min-w-[300px] max-w-md
+        ${styles[toast.type]}
+      `}
+    >
+      <div className="flex-shrink-0 mr-3 mt-0.5">
+        {icons[toast.type]}
       </div>
-      <div className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200">
+      <div className="flex-1 text-sm font-medium break-words">
         {toast.message}
       </div>
-      <button 
+      <button
         onClick={() => removeToast(toast.id)}
-        className="ml-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+        className="ml-3 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
+        aria-label="Close"
       >
         <X className="w-4 h-4" />
       </button>

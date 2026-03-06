@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Room, Role, BookingStatus, Booking, RoomComputer } from '../types';
-import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight, X, Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet } from 'lucide-react';
+import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight, X, Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet, ChevronLeft } from 'lucide-react';
 import { api } from '../services/api';
 import ExcelJS from 'exceljs';
 
@@ -21,7 +21,7 @@ const DISCOVERY_DOCS = [
   'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
 ];
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/drive.file';
-const FTI_DRIVE_FOLDER_ID = ''; // Opsional: Isi ID Folder Google Drive FTI di sini agar file masuk ke folder spesifik
+const FTI_DRIVE_FOLDER_ID = ''; 
 
 interface RoomsProps {
   role: Role;
@@ -59,7 +59,6 @@ const Room360Thumbnail: React.FC<{ room: Room }> = ({ room }) => {
             thumbnailRef.current.id = uniqueId;
 
             try {
-                // Destroy previous instance if exists
                 if (viewerRef.current) {
                     try { viewerRef.current.destroy(); } catch(e) {}
                 }
@@ -114,7 +113,7 @@ const Room360Thumbnail: React.FC<{ room: Room }> = ({ room }) => {
         >
             <div ref={thumbnailRef} className="w-full h-full bg-gray-200" />
             
-            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop-blur-sm flex items-center z-20 pointer-events-none">
+            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop items-center z--blur-sm flex20 pointer-events-none">
                   <MapPin className="w-3 h-3 mr-1"/> FTI Lt. 4
             </div>
         </div>
@@ -144,7 +143,7 @@ const getConditionColor = (condition?: string) => {
   }
 };
 
-const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
+const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   // Helper: Cek admin case-insensitive
   const isAdmin = role.toString().toUpperCase() === Role.ADMIN.toString().toUpperCase();
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1557,4 +1556,4 @@ const Rooms: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   );
 };
 
-export default Rooms;
+export default Ruangan;

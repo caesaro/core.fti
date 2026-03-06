@@ -143,6 +143,7 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
     setFormPembimbingId(pkl.pembimbingId || '');
     setFormStatus(pkl.status);
     setFormSurat(pkl.suratPengajuan);
+    setBatchStudents([{ nama: pkl.nama, Jurusan: pkl.Jurusan }]);
     setIsBatchMode(false);
     setIsModalOpen(true);
   };
@@ -651,4 +652,3 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
 };
 
 export default PKLManagement;
-
