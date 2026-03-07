@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Room, Role, BookingStatus, Booking, RoomComputer } from '../types';
 import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight, X, Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet, ChevronLeft } from 'lucide-react';
 import { api } from '../services/api';
-import ExcelJS from 'exceljs';
+import RoomForm from '../components/RoomForm';
+import BookingForm from '../components/BookingForm';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from '../src/config/google';
 
 // Declare Pannellum for TypeScript
@@ -152,20 +153,12 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Room>>({});
   const [isImageProcessing, setIsImageProcessing] = useState(false);
-
+  
   // Delete Modal State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const [labStaff, setLabStaff] = useState<LabStaff[]>([]);
-  // Booking Form State
-  const [bookingForm, setBookingForm] = useState<Partial<Booking>>({
-    purpose: '', responsiblePerson: '', contactPerson: '', proposalFile: ''
-  });
-  const [bookingSchedules, setBookingSchedules] = useState<{date: string, startTime: string, endTime: string}[]>([
-    { date: '', startTime: '', endTime: '' }
-  ]);
-  const [bookingFile, setBookingFile] = useState<File | null>(null);
 
   // Pannellum Ref
   const panoramaRef = useRef<HTMLDivElement>(null);
@@ -176,9 +169,8 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [isGapiReady, setIsGapiReady] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState(false);
-  const [isBookingLoading, setIsBookingLoading] = useState(false);
 
-  // Computer Specs State
+  // Computer Specs State (Summary Only)
   const [roomComputers, setRoomComputers] = useState<RoomComputer[]>([]);
   const [dominantSpec, setDominantSpec] = useState<any>(null);
   const [editingComputer, setEditingComputer] = useState<Partial<RoomComputer> | null>(null);
@@ -236,7 +228,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
         const baseFacilities = ["AC", "CCTV", "Komputer", "Meja", "Kursi", "Stop Kontak", "Proyektor", "Smart TV", "Interactive TV", "TV", "Console Cisco", "Videowall", "Sound/Speaker", "Mic", "Podium", "Green Screen", "Peralatan Fotografi & Videografi", "Internet LAN"];
         baseFacilities.forEach(f => allFacs.add(f));
 
-        data.forEach((room) => {
+        data.forEach(room => {
             if (room.facilities) {
                 room.facilities.forEach(fac => allFacs.add(fac));
             }
@@ -255,7 +247,8 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
           const mappedStaff = data.map((s: any) => ({
               id: s.id,
               name: s.nama,
-              jabatan: s.jabatan
+              jabatan: s.jabatan,
+              status: s.status
           }));
           setLabStaff(mappedStaff);
       }
@@ -404,140 +397,6 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     return "-";
   };
 
-  const handleBookingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // Validate File Type (PDF)
-      if (file.type !== 'application/pdf') {
-        alert("File harus berformat PDF!");
-        e.target.value = '';
-        return;
-      }
-
-      // Validate File Size (Max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert("Ukuran file maksimal 5MB!");
-        e.target.value = '';
-        return;
-      }
-
-      // Convert PDF to Base64
-      const reader = new FileReader();
-      reader.onloadend = () => {
-          setBookingFile(file); // Keep file object for validation if needed
-          setBookingForm(prev => ({ ...prev, proposalFile: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Schedule Handlers
-  const addScheduleRow = () => {
-    setBookingSchedules([...bookingSchedules, { date: '', startTime: '', endTime: '' }]);
-  };
-
-  const removeScheduleRow = (index: number) => {
-    if (bookingSchedules.length > 1) {
-      setBookingSchedules(bookingSchedules.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateScheduleRow = (index: number, field: 'date' | 'startTime' | 'endTime', value: string) => {
-    const newSchedules = [...bookingSchedules];
-    newSchedules[index][field] = value;
-    setBookingSchedules(newSchedules);
-  };
-
-  // Check Availability against Google Calendar
-  const checkGoogleCalendarAvailability = async (calendarId: string, date: string, startTime: string, endTime: string) => {
-    try {
-      const startDateTime = new Date(`${date}T${startTime}:00`);
-      const endDateTime = new Date(`${date}T${endTime}:00`);
-      
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) return false;
-
-      const response = await window.gapi.client.calendar.events.list({
-        calendarId: calendarId,
-        timeMin: startDateTime.toISOString(),
-        timeMax: endDateTime.toISOString(),
-        singleEvents: true,
-        showDeleted: false
-      });
-
-      // Filter overlap: (StartA < EndB) && (EndA > StartB)
-      const conflicts = response.result.items.filter((event: any) => {
-          const eventStart = new Date(event.start.dateTime || event.start.date);
-          const eventEnd = new Date(event.end.dateTime || event.end.date);
-          return eventStart < endDateTime && eventEnd > startDateTime;
-      });
-
-      return conflicts.length > 0;
-    } catch (error) {
-      console.error("Error checking availability:", error);
-      return false; 
-    }
-  };
-
-  const handleBookingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bookingFile) {
-       alert("Mohon upload surat permohonan peminjaman.");
-       return;
-    }
-
-    setIsBookingLoading(true);
-    
-    // Validasi Konflik dengan Google Calendar
-    if (selectedRoom?.googleCalendarUrl && isGapiReady) {
-        const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
-        if (calendarId) {
-            setIsBookingLoading(true);
-            for (const schedule of bookingSchedules) {
-                const isBusy = await checkGoogleCalendarAvailability(calendarId, schedule.date, schedule.startTime, schedule.endTime);
-                if (isBusy) {
-                    alert(`GAGAL: Jadwal bentrok! Ruangan sudah terpakai di Google Calendar pada tanggal ${schedule.date} pukul ${schedule.startTime} - ${schedule.endTime}.`);
-                    setIsBookingLoading(false);
-                    return;
-                }
-            }
-            setIsBookingLoading(false);
-        }
-    }
-
-    try {
-        // Kirim data ke Backend (termasuk file base64)
-        const res = await api('/api/bookings', {
-            method: 'POST',
-            data: {
-                roomId: selectedRoom?.id,
-                userId: localStorage.getItem('userId'), // Ambil ID user yang login
-                responsiblePerson: bookingForm.responsiblePerson,
-                contactPerson: bookingForm.contactPerson,
-                purpose: bookingForm.purpose,
-                proposalFile: bookingForm.proposalFile, // Base64 String
-                schedules: bookingSchedules
-            }
-        });
-
-        if (res.ok) {
-            alert(`Permohonan berhasil dikirim!`);
-        } else {
-            const err = await res.json();
-            alert(`Gagal mengirim permohonan: ${err.error}`);
-        }
-    } catch (e) {
-        alert("Terjadi kesalahan saat mengirim data.");
-    }
-    
-    // Reset and go back
-    setIsBookingLoading(false);
-    setBookingFile(null);
-    setBookingForm({ purpose: '', responsiblePerson: '', contactPerson: '', proposalFile: '' });
-    setBookingSchedules([{ date: '', startTime: '', endTime: '' }]);
-    setViewMode('list');
-  };
-
   // CRUD Handlers
   const handleAddNew = () => {
     // Restrict Access
@@ -590,177 +449,16 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     }
   };
 
-  const handleAddNewFacility = () => {
-    const newFac = newFacilityInput.trim();
-    if (newFac) {
-        // Add to current room's form data
-        const currentFacilities = formData.facilities || [];
-        if (!currentFacilities.includes(newFac)) {
-             setFormData({ ...formData, facilities: [...currentFacilities, newFac] });
-        }
-
-        // Add to the global available list for this session if it's not there
-        if (!availableFacilities.includes(newFac)) {
-            setAvailableFacilities(prev => [...prev, newFac].sort());
-        }
-        
-        setNewFacilityInput('');
-    }
-  };
-
-  const handleSaveComputer = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!editingComputer || !selectedRoom) return;
-
-      const payload = {
-          ...editingComputer,
-          id: editingComputer.id || `PC-${Date.now()}`,
-          roomId: selectedRoom.id
-      };
-
-      try {
-          await api('/api/computers', { method: 'POST', data: payload });
-          setEditingComputer(null);
-          fetchRoomComputers();
-      } catch (e) { alert("Gagal menyimpan data komputer"); }
-  };
-
-  const handleDeleteComputer = async (id: string) => {
-      if (confirm("Hapus data komputer ini?")) {
-          try {
-              await api(`/api/computers/${id}`, { method: 'DELETE' });
-              fetchRoomComputers();
-          } catch (e) { alert("Gagal menghapus"); }
-      }
-  };
-
-  const handleDownloadTemplate = async () => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Template Komputer');
-
-    worksheet.columns = [
-      { header: 'No PC', key: 'pcNumber', width: 10 },
-      { header: 'OS', key: 'os', width: 15 },
-      { header: 'CPU', key: 'cpu', width: 25 },
-      { header: 'Tipe GPU (Integrated/Dedicated)', key: 'gpuType', width: 25 },
-      { header: 'Model GPU', key: 'gpuModel', width: 20 },
-      { header: 'VRAM', key: 'vram', width: 10 },
-      { header: 'RAM', key: 'ram', width: 10 },
-      { header: 'Storage', key: 'storage', width: 25 },
-      { header: 'Monitor', key: 'monitor', width: 20 },
-      { header: 'Keyboard', key: 'keyboard', width: 20 },
-      { header: 'Mouse', key: 'mouse', width: 20 },
-      { header: 'Kondisi', key: 'condition', width: 15 },
-    ];
-
-    worksheet.addRow({
-      pcNumber: 'PC-01',
-      os: 'Windows 11',
-      cpu: 'Intel Core i5-12400',
-      gpuType: 'Integrated',
-      gpuModel: 'Intel UHD 730',
-      vram: '-',
-      ram: '16GB',
-      storage: 'SSD 512GB',
-      monitor: 'Dell 24"',
-      keyboard: 'Logitech',
-      mouse: 'Logitech',
-      condition: 'Baik'
-    });
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'template_data_komputer.xlsx';
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !selectedRoom) return;
-
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-          const buffer = event.target?.result as ArrayBuffer;
-          try {
-              const workbook = new ExcelJS.Workbook();
-              await workbook.xlsx.load(buffer);
-              const worksheet = workbook.getWorksheet(1);
-
-              if (!worksheet) {
-                  alert("File Excel kosong atau format salah.");
-                  return;
-              }
-
-              const promises: Promise<any>[] = [];
-
-              worksheet.eachRow((row, rowNumber) => {
-                  if (rowNumber === 1) return; // Skip header
-
-                  const pcNumber = row.getCell(1).text;
-                  if (!pcNumber) return;
-
-                  const payload = {
-                      id: `PC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                      roomId: selectedRoom.id,
-                      pcNumber: pcNumber,
-                      os: row.getCell(2).text,
-                      cpu: row.getCell(3).text,
-                      gpuType: row.getCell(4).text || 'Integrated',
-                      gpuModel: row.getCell(5).text,
-                      vram: row.getCell(6).text,
-                      ram: row.getCell(7).text,
-                      storage: row.getCell(8).text,
-                      monitor: row.getCell(9).text,
-                      keyboard: row.getCell(10).text,
-                      mouse: row.getCell(11).text,
-                      condition: row.getCell(12).text || 'Baik',
-                  };
-
-                  promises.push(api('/api/computers', { method: 'POST', data: payload }));
-              });
-
-              await Promise.all(promises);
-              alert(`Berhasil mengimport data komputer.`);
-              fetchRoomComputers();
-          } catch (error) {
-              console.error(error);
-              alert("Gagal memproses file Excel.");
-          }
-      };
-      reader.readAsArrayBuffer(file);
-  };
-
-  const handleDeleteAllComputers = async () => {
-      if (!selectedRoom) return;
-      if (confirm(`PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA data komputer di ruangan ${selectedRoom.name}? Tindakan ini tidak dapat dibatalkan.`)) {
-          try {
-              await api(`/api/rooms/${selectedRoom.id}/computers`, { method: 'DELETE' });
-              alert("Semua data komputer di ruangan ini telah dihapus.");
-              fetchRoomComputers();
-          } catch (e) {
-              console.error(e);
-              alert("Gagal menghapus data.");
-          }
-      }
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Validasi Kapasitas
-    if (!formData.capacity || formData.capacity <= 0) {
+  const handleSaveRoom = async (submittedData: Partial<Room>) => {
+    // Validasi Kapasitas (double check, sudah ada di form)
+    if (!submittedData.capacity || submittedData.capacity <= 0) {
       alert("Kapasitas ruangan harus lebih dari 0.");
       return;
     }
 
     // Bersihkan fasilitas dari string kosong sebelum kirim
     const payload = {
-        ...formData,
-        facilities: formData.facilities?.filter(f => f.trim() !== '') || []
+        ...submittedData,
     };
 
     try {
@@ -790,6 +488,48 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     }
   };
 
+  // Computer management functions
+  const handleDeleteComputer = async (id: string) => {
+    if (!selectedRoom) return;
+    if (confirm("Hapus data komputer ini?")) {
+      try {
+        await api(`/api/rooms/${selectedRoom.id}/computers/${id}`, { method: 'DELETE' });
+        fetchRoomComputers();
+      } catch (e) {
+        alert("Gagal menghapus data komputer");
+      }
+    }
+  };
+
+  const handleSaveComputer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRoom || !editingComputer) return;
+
+    try {
+      let response;
+      if (editingComputer.id) {
+        response = await api(`/api/rooms/${selectedRoom.id}/computers/${editingComputer.id}`, {
+          method: 'PUT',
+          data: editingComputer
+        });
+      } else {
+        response = await api(`/api/rooms/${selectedRoom.id}/computers`, {
+          method: 'POST',
+          data: { ...editingComputer, id: undefined }
+        });
+      }
+
+      if (response.ok) {
+        setEditingComputer(null);
+        fetchRoomComputers();
+      } else {
+        alert("Gagal menyimpan data komputer");
+      }
+    } catch (e) {
+      alert("Gagal menyimpan data komputer");
+    }
+  };
+
   // Calendar Visual Logic
   const getDaysInMonth = () => Array.from({length: 30}, (_, i) => i + 1);
   const isBooked = (day: number) => day % 3 === 0; // Mock
@@ -798,161 +538,23 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
 
   if (viewMode === 'form') {
     return (
-      <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h2 className="text-2xl font-bold mb-6 dark:text-white">{isEditing ? 'Edit Ruangan' : 'Tambah Ruangan Baru'}</h2>
-        <form onSubmit={handleFormSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama Ruangan</label>
-               <input 
-                  type="text" required value={formData.name || ''} 
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-               />
-            </div>
-            <div>
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori Ruangan</label>
-               <select 
-                  required 
-                  value={formData.category || 'Laboratorium Komputer'} 
-                  onChange={e => setFormData({...formData, category: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500"
-               >
-                  <option value="Laboratorium Komputer">Laboratorium Komputer</option>
-                  <option value="Teori">Teori</option>
-                  <option value="Praktek">Praktek</option>
-                  <option value="Rekreasi">Rekreasi</option>
-                  <option value="Meeting">Meeting</option>
-                  <option value="Lounge">Lounge</option>
-                  <option value="Open Space">Open Space</option>
-                  <option value="Auditorium/Ruang Kuliah Umum">Auditorium/Ruang Kuliah Umum</option>
-               </select>
-            </div>
-            <div>
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kapasitas (Orang)</label>
-               <input 
-                  type="number" min="0" required value={formData.capacity || ''} 
-                  onChange={e => setFormData({...formData, capacity: parseInt(e.target.value)})}
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-               />
-            </div>
-            <div className="md:col-span-2">
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deskripsi</label>
-               <textarea 
-                  rows={3} required value={formData.description || ''} 
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-               />
-            </div>
-            <div className="md:col-span-2">
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fasilitas</label>
-               <div className="p-3 bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600 rounded-lg">
-                  <div className="flex flex-wrap gap-2">
-                     {availableFacilities.map((fac) => {
-                        const isSelected = (formData.facilities || []).includes(fac);
-                        return (
-                           <button
-                              type="button"
-                              key={fac}
-                              onClick={() => {
-                                 const currentFacilities = formData.facilities || [];
-                                 const newFacilities = isSelected 
-                                    ? currentFacilities.filter(f => f !== fac)
-                                    : [...currentFacilities, fac];
-                                 setFormData({ ...formData, facilities: newFacilities });
-                              }}
-                              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center ${
-                                 isSelected 
-                                    ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' 
-                                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                              }`}
-                           >
-                              {isSelected && <Check className="w-3 h-3 mr-1.5" />}
-                              {fac}
-                           </button>
-                        );
-                     })}
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-500">
-                      <input
-                          type="text"
-                          value={newFacilityInput}
-                          onChange={(e) => setNewFacilityInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNewFacility(); } }}
-                          placeholder="Ketik fasilitas baru lalu Enter..."
-                          className="flex-1 px-3 py-1.5 text-sm border rounded-md dark:bg-gray-800 dark:border-gray-500 dark:text-white focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                          type="button"
-                          onClick={handleAddNewFacility}
-                          className="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 text-sm font-medium rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
-                      >
-                          Tambah
-                      </button>
-                  </div>
-               </div>
-            </div>
-            <div>
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PIC (Penanggung Jawab)</label>
-               <select 
-                  required
-                  value={formData.pic || ''} 
-                  onChange={e => setFormData({...formData, pic: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500"
-               >
-                  <option value="">-- Pilih PIC (Teknisi) --</option>
-                  {labStaff.map(tech => (
-                      <option key={tech.id} value={tech.name}>{tech.name} ({tech.jabatan || 'Staff'})</option>
-                  ))}
-               </select>
-               <p className="text-xs text-gray-500 mt-1">*Hanya teknisi aktif yang ditampilkan</p>
-            </div>
-             <div>
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Calendar ID</label>
-               <input 
-                  type="text" value={formData.googleCalendarUrl || ''} 
-                  onChange={e => setFormData({...formData, googleCalendarUrl: e.target.value})}
-                  placeholder='Contoh: fti.laboran@adm.uksw.edu atau c_...@group.calendar.google.com'
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-               />
-               <p className="text-xs text-gray-500 mt-1">Masukkan ID Kalender (email/group ID) atau URL Embed.</p>
-            </div>
-            <div className="md:col-span-2">
-               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upload Gambar 360</label>
-               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  {isImageProcessing ? (
-                     <div className="flex flex-col items-center text-blue-600">
-                        <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                        <span className="text-sm font-semibold">Memproses Gambar...</span>
-                     </div>
-                  ) : formData.image ? (
-                     <div className="flex flex-col items-center">
-                        <img src={formData.image} alt="Preview" className="h-32 object-cover rounded mb-3" />
-                        <button type="button" onClick={() => setFormData({...formData, image: ''})} className="text-red-500 text-sm hover:underline">Hapus Gambar</button>
-                     </div>
-                  ) : (
-                     <label className="cursor-pointer flex flex-col items-center">
-                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                        <span className="text-sm text-gray-500">Klik untuk upload (JPG/PNG)</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                     </label>
-                  )}
-               </div>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-             <button type="button" onClick={() => setViewMode('list')} className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Batal</button>
-             <button type="submit" disabled={isImageProcessing} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">Simpan</button>
-          </div>
-        </form>
-      </div>
+      <RoomForm
+        initialData={formData}
+        isEditing={isEditing}
+        onSave={handleSaveRoom}
+        onCancel={() => setViewMode('list')}
+        staffList={labStaff.filter(s => s.status === 'Aktif')}
+        availableFacilities={availableFacilities}
+      />
     );
   }
 
   if (viewMode === 'detail' && selectedRoom) {
       return (
           <div className="space-y-6">
-              <button onClick={() => setViewMode('list')} className="text-sm text-blue-500 hover:underline mb-4">&larr; Kembali ke daftar</button>
+              <button onClick={() => setViewMode('list')} className="text-sm text-blue-500 hover:underline mb-4 flex items-center">
+                <ChevronLeft className="w-4 h-4 mr-1" /> Kembali ke daftar
+              </button>
               
               <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-700">
                   {/* 360 Viewer Container */}
@@ -968,7 +570,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                           <div>
                             <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedRoom.name}</h2>
                             <div className="mb-3">
-                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getCategoryColor(selectedRoom.category)}`}>{selectedRoom.category}</span>
+                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getCategoryColor(selectedRoom.category)}`}>{selectedRoom.category || 'Umum'}</span>
                             </div>
                             <p className="text-gray-500 dark:text-gray-400 flex items-center mb-4"><Users className="w-4 h-4 mr-2"/> Kapasitas: {selectedRoom.capacity} Orang | PIC: {selectedRoom.pic}</p>
                           </div>
@@ -994,7 +596,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                               
                               <h3 className="text-xl font-semibold mb-3 text-gray-800 dark:text-white">Fasilitas</h3>
                               <div className="flex flex-wrap gap-2 mb-8">
-                                  {selectedRoom.facilities.map((fac, idx) => (
+                                  {selectedRoom.facilities?.map((fac, idx) => (
                                       <span key={idx} className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
                                           {fac}
                                       </span>
@@ -1131,6 +733,14 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
 
   // --- MANAGE COMPUTERS VIEW ---
   if (viewMode === 'computers' && selectedRoom) {
+      const handleDownloadTemplate = async () => {
+        alert("Fitur ini sedang dalam pengembangan.");
+      };
+      const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        alert("Fitur ini sedang dalam pengembangan.");
+      };
+      const handleDeleteAllComputers = async () => { alert("Fitur ini sedang dalam pengembangan."); };
+
       return (
           <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -1282,128 +892,19 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
 
   if (viewMode === 'booking' && selectedRoom) {
       return (
-          <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-              <h2 className="text-2xl font-bold mb-6 dark:text-white">Formulir Peminjaman Ruangan</h2>
-              <form onSubmit={handleBookingSubmit} className="space-y-6">
-                  <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ruangan</label>
-                      <input type="text" value={selectedRoom.name} disabled className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-500" />
-                  </div>
-                  
-                  {/* Schedule Section */}
-                  <div className="space-y-3 bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <div className="flex justify-between items-center">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jadwal Pemakaian</label>
-                          <button type="button" onClick={addScheduleRow} className="text-sm text-blue-600 hover:underline flex items-center font-medium">
-                              <Plus className="w-4 h-4 mr-1" /> Tambah Hari
-                          </button>
-                      </div>
-                      
-                      {bookingSchedules.map((schedule, index) => (
-                          <div key={index} className="flex flex-col sm:flex-row gap-3 items-end animate-fade-in-up">
-                              <div className="flex-1 w-full">
-                                  <label className="block text-xs text-gray-500 mb-1">Tanggal</label>
-                                  <input type="date" required 
-                                      value={schedule.date} 
-                                      onChange={e => updateScheduleRow(index, 'date', e.target.value)}
-                                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm" 
-                                  />
-                              </div>
-                              <div className="w-full sm:w-32">
-                                  <label className="block text-xs text-gray-500 mb-1">Jam Mulai</label>
-                                  <input type="time" required 
-                                      value={schedule.startTime} 
-                                      onChange={e => updateScheduleRow(index, 'startTime', e.target.value)}
-                                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm" 
-                                  />
-                              </div>
-                              <div className="w-full sm:w-32">
-                                  <label className="block text-xs text-gray-500 mb-1">Jam Selesai</label>
-                                  <input type="time" required 
-                                      value={schedule.endTime} 
-                                      onChange={e => updateScheduleRow(index, 'endTime', e.target.value)}
-                                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm" 
-                                  />
-                              </div>
-                              {bookingSchedules.length > 1 && (
-                                  <button type="button" onClick={() => removeScheduleRow(index)} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mb-[1px] transition-colors" title="Hapus baris">
-                                      <Trash2 className="w-4 h-4" />
-                                  </button>
-                              )}
-                          </div>
-                      ))}
-                  </div>
-
-                  {/* Purpose */}
-                  <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama Kegiatan</label>
-                      <input type="text" required 
-                          value={bookingForm.purpose} 
-                          onChange={e => setBookingForm({...bookingForm, purpose: e.target.value})}
-                          className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-                          placeholder="Contoh: Rapat Koordinasi Panitia Tech Days"
-                      />
-                  </div>
-
-                  {/* Responsible Person Info */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama Penanggung Jawab</label>
-                          <div className="relative">
-                            <User className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                            <input type="text" required 
-                                value={bookingForm.responsiblePerson} 
-                                onChange={e => setBookingForm({...bookingForm, responsiblePerson: e.target.value})}
-                                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-                                placeholder="Nama Lengkap"
-                            />
-                          </div>
-                      </div>
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kontak Person (HP/WA)</label>
-                          <input type="tel" required 
-                              value={bookingForm.contactPerson} 
-                              onChange={e => setBookingForm({...bookingForm, contactPerson: e.target.value})}
-                              className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" 
-                              placeholder="08123xxxxxxx"
-                          />
-                      </div>
-                  </div>
-
-                  {/* File Upload */}
-                  <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upload Surat Permohonan (PDF, Max 5MB)</label>
-                      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                          <input 
-                              type="file" 
-                              id="file-upload" 
-                              accept="application/pdf"
-                              onChange={handleBookingFileChange}
-                              className="hidden" 
-                          />
-                          <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-                              <FileText className={`w-8 h-8 mb-2 ${bookingFile ? 'text-blue-600' : 'text-gray-400'}`} />
-                              {bookingFile ? (
-                                  <span className="text-sm font-medium text-blue-600">{bookingFile.name}</span>
-                              ) : (
-                                  <>
-                                      <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">Klik untuk upload surat</span>
-                                      <span className="text-xs text-gray-500 mt-1">Format .pdf, Maksimal 5MB</span>
-                                  </>
-                              )}
-                          </label>
-                      </div>
-                  </div>
-
-                  <div className="flex space-x-3 pt-4">
-                      <button type="button" onClick={() => setViewMode('detail')} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Batal</button>
-                      <button type="submit" disabled={isBookingLoading} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center disabled:opacity-50">
-                          {isBookingLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} 
-                          {isBookingLoading ? 'Cek Jadwal...' : 'Kirim Permohonan'}
-                      </button>
-                  </div>
-              </form>
-          </div>
+        <div className="max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6 dark:text-white text-center">Formulir Peminjaman Ruangan</h2>
+            <BookingForm
+                rooms={rooms}
+                initialRoomId={selectedRoom.id}
+                showToast={(msg, type) => alert(`${type}: ${msg}`)} // Placeholder, ideally use a real toast component
+                onSuccess={() => {
+                    alert("Permohonan berhasil dikirim!");
+                    setViewMode('detail');
+                }}
+                onCancel={() => setViewMode('detail')}
+            />
+        </div>
       )
   }
 
@@ -1483,7 +984,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
                    <div className="flex space-x-2 w-full">
                       {(isAdmin) && (
-                           <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                           <div className="flex space-x-2" onClick={e => e.stopPropagation()}>
                              <button onClick={() => handleEdit(room)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg dark:hover:bg-blue-900/20" title="Edit">
                                 <Edit2 className="w-4 h-4" />
                              </button>

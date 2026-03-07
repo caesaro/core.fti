@@ -16,6 +16,7 @@ export interface Room {
   category?: string;
   description: string;
   capacity: number;
+  pic_id?: string; // PIC Staff ID (foreign key to staff table)
   pic: string;
   image: string;
   facilities: string[];
@@ -151,4 +152,17 @@ export interface PKLStudent {
   pembimbingNama?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface Software {
+  id: string;
+  name: string;
+  version: string;
+  licenseType: 'Free' | 'Commercial' | 'Open Source';
+  licenseKey?: string;
+  vendor?: string;
+  installDate?: string;
+  roomId?: string;
+  notes?: string;
+  category?: string; // e.g., Operating System, Development Tool, Antivirus, etc.
 }

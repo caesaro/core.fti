@@ -259,3 +259,25 @@ CREATE INDEX idx_class_schedules_semester ON class_schedules(semester);
 CREATE INDEX idx_class_schedules_academic ON class_schedules(academic_year);
 CREATE INDEX idx_class_schedules_day ON class_schedules(day_of_week);
 
+-- 12. Tabel Software (Software yang terinstall di Laboratorium)
+CREATE TABLE software (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    version VARCHAR(50),
+    license_type VARCHAR(50) DEFAULT 'Free',
+    license_key TEXT,
+    vendor VARCHAR(100),
+    install_date DATE,
+    room_id VARCHAR(50),
+    category VARCHAR(50),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_software_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL
+);
+
+-- Indexing untuk Software
+CREATE INDEX idx_software_room ON software(room_id);
+CREATE INDEX idx_software_category ON software(category);
+CREATE INDEX idx_software_name ON software(name);
+

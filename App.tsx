@@ -23,6 +23,7 @@ import LoadingScreen from './components/LoadingScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import Maintenance from './pages/Maintenance';
 import JadwalKuliah from './pages/JadwalKuliah';
+import ManajemenSpesifikasi from './pages/ManajemenSpesifikasi';
 import { api } from './services/api';
 
 const App: React.FC = () => {
@@ -305,6 +306,16 @@ const App: React.FC = () => {
             onNavigate={setCurrentPage}
           >
             <JadwalKuliah role={currentRole} showToast={showToast} />
+          </ProtectedRoute>
+        );
+      case 'specs-management':
+        return (
+          <ProtectedRoute 
+            currentRole={currentRole} 
+            allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+            onNavigate={setCurrentPage}
+          >
+            <ManajemenSpesifikasi role={currentRole} isDarkMode={isDarkMode} showToast={showToast} />
           </ProtectedRoute>
         );
       default:

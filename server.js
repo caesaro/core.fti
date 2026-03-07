@@ -1006,6 +1006,100 @@ app.delete('/api/computers/:id', async (req, res) => {
   }
 });
 
+// --- SOFTWARE (Tabel: software) ---
+
+// Get All Software
+app.get('/api/software', async (req, res) => {
+  try {
+    const { roomId, category } = req.query;
+    let query = `
+      SELECT s.*, r.name as room_name 
+      FROM software s 
+      LEFT JOIN rooms r ON s.room_id = r.id
+    `;
+    let params = [];
+    let conditions = [];
+    
+    if (roomId) {
+      params.push(roomId);
+      conditions.push(`s.room_id = $${params.length}`);
+    }
+    
+    if (category) {
+      params.push(category);
+      conditions.push(`s.category = $${params.length}`);
+    }
+    
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    query += ' ORDER BY s.name ASC';
+    
+    const result = await pool.query(query, params);
+    const software = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      version: row.version,
+      licenseType: row.license_type,
+      licenseKey: row.license_key,
+      vendor: row.vendor,
+      installDate: row.install_date ? new Date(row.install_date).toLocaleDateString('en-CA') : '',
+      roomId: row.room_id,
+      roomName: row.room_name,
+      notes: row.notes,
+      category: row.category
+    }));
+    res.json(software);
+  } catch (err) {
+    console.error('Get software error:', err);
+    res.status(500).json({ error: 'Gagal mengambil data software.' });
+  }
+});
+
+// Add New Software
+app.post('/api/software', async (req, res) => {
+  const { name, version, licenseType, licenseKey, vendor, installDate, roomId, notes, category } = req.body;
+  try {
+    const id = `SOFT-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO software (id, name, version, license_type, license_key, vendor, install_date, room_id, notes, category) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [id, name, version, licenseType, licenseKey || null, vendor || null, installDate || null, roomId || null, notes || null, category || null]
+    );
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('Add software error:', err);
+    res.status(500).json({ error: 'Gagal menambah software.' });
+  }
+});
+
+// Update Software
+app.put('/api/software/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, version, licenseType, licenseKey, vendor, installDate, roomId, notes, category } = req.body;
+  try {
+    await pool.query(
+      `UPDATE software SET name=$1, version=$2, license_type=$3, license_key=$4, vendor=$5, install_date=$6, room_id=$7, notes=$8, category=$9, updated_at=CURRENT_TIMESTAMP WHERE id=$10`,
+      [name, version, licenseType, licenseKey || null, vendor || null, installDate || null, roomId || null, notes || null, category || null, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update software error:', err);
+    res.status(500).json({ error: 'Gagal update software.' });
+  }
+});
+
+// Delete Software
+app.delete('/api/software/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM software WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Gagal menghapus software.' });
+  }
+});
+
 // --- BOOKINGS (Tabel: bookings & booking_schedules) ---
 
 app.get('/api/bookings', async (req, res) => {
