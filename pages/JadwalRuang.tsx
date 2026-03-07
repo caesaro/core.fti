@@ -39,6 +39,7 @@ interface GoogleAuthState {
 }
 
 const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) => {
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
   const [rooms, setRooms] = useState<Room[]>([]);
   const [filterRoom, setFilterRoom] = useState<string>(''); 
   const [events, setEvents] = useState<GoogleEvent[]>([]);
@@ -183,6 +184,45 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
     }
   };
 
+  // 4. Fetch Events (based on view)
+  const fetchEvents = async () => {
+    if (!selectedRoom?.googleCalendarUrl || !isGapiInitialized) return;
+    
+    const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
+    if (!calendarId) return;
+
+    setIsLoading(true);
+    try {
+      const { timeMin, timeMax } = getDateRangeForView(currentDate, viewMode);
+
+      const request = {
+        'calendarId': calendarId,
+        'timeMin': timeMin.toISOString(),
+        'timeMax': timeMax.toISOString(),
+        'showDeleted': false,
+        'singleEvents': true,
+        'orderBy': 'startTime',
+      };
+      const response = await window.gapi.client.calendar.events.list(request);
+      setEvents(response.result.items);
+    } catch (err: any) {
+      console.error("Error fetching events", err);
+      const errorCode = err.result?.error?.code;
+      if (errorCode === 401) {
+        handleGoogleLogout();
+        showToast("Sesi Google Calendar expired. Silakan login ulang.", "warning");
+      } else if (errorCode === 404) {
+         showToast("Kalender tidak ditemukan (404). Periksa ID Kalender.", "error");
+      } else if (errorCode === 403) {
+         showToast("Akses ditolak (403). Pastikan API Key valid & Kalender Publik.", "error");
+      } else {
+         showToast(`Gagal mengambil jadwal: ${err.result?.error?.message || 'Cek Console'}`, "error");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // 1. Load Google API Scripts
   useEffect(() => {
     const loadScripts = () => {
@@ -282,51 +322,6 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
     setTokenClient(client);
   };
 
-  // 4. Fetch Events (Monthly)
-  const fetchEvents = async () => {
-    if (!selectedRoom?.googleCalendarUrl) return;
-    if (!isGapiInitialized) return;
-    
-    const calendarId = getCalendarId(selectedRoom.googleCalendarUrl);
-    if (!calendarId) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Calculate start and end of the displayed month
-      const timeMin = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
-      const timeMax = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
-
-      const request = {
-        'calendarId': calendarId,
-        'timeMin': timeMin,
-        'timeMax': timeMax,
-        'showDeleted': false,
-        'singleEvents': true,
-        'orderBy': 'startTime',
-      };
-      const response = await window.gapi.client.calendar.events.list(request);
-      setEvents(response.result.items);
-    } catch (err: any) {
-      console.error("Error fetching events", err);
-      const errorCode = err.result?.error?.code;
-      if (errorCode === 401) {
-        // Token expired - try to refresh or re-authenticate
-        handleGoogleLogout();
-        showToast("Sesi Google Calendar expired. Silakan login ulang.", "warning");
-      } else if (errorCode === 404) {
-         showToast("Kalender tidak ditemukan (404). Periksa ID Kalender.", "error");
-      } else if (errorCode === 403) {
-         showToast("Akses ditolak (403). Pastikan API Key valid & Kalender Publik.", "error");
-      } else {
-         showToast(`Gagal mengambil jadwal: ${err.result?.error?.message || 'Cek Console'}`, "error");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const changeMonth = (delta: number) => {
     const newDate = new Date(currentDate);
     newDate.setMonth(newDate.getMonth() + delta);
@@ -343,11 +338,22 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
         handleAuthClick(); // Trigger login jika belum auth (untuk write)
         return;
     }
+    
+    // Determine the default date based on view mode
+    let defaultDate: string;
+    if (viewMode === 'day') {
+      // Use the current viewed date when in day mode
+      defaultDate = currentDate.toISOString().split('T')[0];
+    } else {
+      // Default to today for month/week views
+      defaultDate = new Date().toISOString().split('T')[0];
+    }
+    
     // Reset form
     setEventForm({
         summary: '',
         description: '',
-        startDate: new Date().toISOString().split('T')[0],
+        startDate: defaultDate,
         startTime: '08:00',
         endTime: '10:00',
         recurrence: 'NONE',
@@ -546,9 +552,16 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
   };
   useEffect(() => {
     if (isGapiInitialized) {
-      fetchEvents();
+      // Debounce fetchEvents to avoid rapid firing on view/date change
+      const handler = setTimeout(() => {
+        fetchEvents();
+      }, 200);
+
+      return () => {
+        clearTimeout(handler);
+      };
     }
-  }, [filterRoom, isGapiInitialized, currentDate]);
+  }, [filterRoom, isGapiInitialized, currentDate, viewMode]);
 
   const handleAuthClick = () => {
     if (tokenClient) {
@@ -596,6 +609,42 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
     return "-";
   };
 
+  // --- Calendar Navigation & Header ---
+  const handlePrev = () => {
+    const newDate = new Date(currentDate);
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() - 7);
+    else newDate.setDate(newDate.getDate() - 1);
+    setCurrentDate(newDate);
+  };
+
+  const handleNext = () => {
+    const newDate = new Date(currentDate);
+    if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    else if (viewMode === 'week') newDate.setDate(newDate.getDate() + 7);
+    else newDate.setDate(newDate.getDate() + 1);
+    setCurrentDate(newDate);
+  };
+
+  const formatDateHeader = () => {
+    if (viewMode === 'month') {
+      return currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    if (viewMode === 'day') {
+      return currentDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    if (viewMode === 'week') {
+      const startOfWeek = new Date(currentDate);
+      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay()); // Sunday
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      const startMonth = startOfWeek.toLocaleDateString('id-ID', { month: 'short' });
+      const endMonth = endOfWeek.toLocaleDateString('id-ID', { month: 'short' });
+
+      return `${startOfWeek.getDate()} ${startMonth} - ${endOfWeek.getDate()} ${endMonth}, ${endOfWeek.getFullYear()}`;
+    }
+  };
   // Calendar Grid Logic
   const calendarGrid = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -639,6 +688,30 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
     return days;
   }, [currentDate, events]);
 
+  // --- Day/Week View Helpers ---
+  const getDateRangeForView = (date: Date, view: 'month' | 'week' | 'day') => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    let timeMin, timeMax;
+
+    if (view === 'month') {
+      timeMin = new Date(year, month, 1);
+      timeMax = new Date(year, month + 1, 0, 23, 59, 59);
+    } else if (view === 'week') {
+      timeMin = new Date(date);
+      timeMin.setDate(day - date.getDay());
+      timeMin.setHours(0, 0, 0, 0);
+      timeMax = new Date(timeMin);
+      timeMax.setDate(timeMin.getDate() + 6);
+      timeMax.setHours(23, 59, 59, 999);
+    } else { // day
+      timeMin = new Date(year, month, day, 0, 0, 0);
+      timeMax = new Date(year, month, day, 23, 59, 59);
+    }
+    return { timeMin, timeMax };
+  };
+
   // Helper to check overlap for styling (Visual indication only, not conflict)
   const checkOverlap = (currentEvent: GoogleEvent, dayEvents: GoogleEvent[]) => {
       if (!currentEvent.start.dateTime || !currentEvent.end.dateTime) return false;
@@ -653,6 +726,189 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
 
           return currentStart < otherEnd && currentEnd > otherStart;
       });
+  };
+
+  // --- RENDER FUNCTIONS FOR VIEWS ---
+
+  const MonthView = () => (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-7 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 border-b border-gray-200 dark:border-gray-700">
+        {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((day, idx) => (
+          <div key={day} className={`py-3 text-center text-sm font-bold ${idx === 0 ? 'text-red-500 dark:text-red-400' : idx === 6 ? 'text-blue-500 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'}`}>
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 auto-rows-fr bg-white dark:bg-gray-800">
+        {calendarGrid.map((day, idx) => (
+          <div 
+            key={idx}
+            onClick={() => handleDayClick(day)}
+            className={`min-h-[120px] border-b border-r border-gray-100 dark:border-gray-700 p-2 transition-colors ${!day.isCurrentMonth ? 'bg-gray-50/50 dark:bg-gray-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer'}`}
+          >
+            {day.isCurrentMonth && (
+              <>
+                <div className={`text-sm font-medium mb-2 ${
+                    day.fullDate === new Date().toISOString().split('T')[0] 
+                    ? 'bg-blue-600 text-white w-7 h-7 flex items-center justify-center rounded-full' 
+                    : 'text-gray-700 dark:text-gray-300'
+                }`}>
+                    {day.date}
+                </div>
+                <div className="space-y-1">
+                  {day.events.map(event => {
+                      const isOverlapping = checkOverlap(event, day.events);
+                      return (
+                      <div 
+                          key={event.id}
+                          onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
+                          className={`block text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity cursor-pointer ${
+                              isOverlapping 
+                              ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' 
+                              : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-800'
+                          }`}
+                          title={`${event.summary}\n${formatEventTime(event.start.dateTime, event.start.date)}${isOverlapping ? '\n(Jadwal Bersamaan)' : ''}`}
+                      >
+                          <div className="flex items-center">
+                              {isOverlapping && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-1.5 flex-shrink-0" />}
+                              {event.start.dateTime && <span className="font-mono text-[10px] mr-1 opacity-75 flex-shrink-0">{new Date(event.start.dateTime).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}</span>}
+                              <span className="truncate">{event.summary}</span>
+                          </div>
+                      </div>
+                      );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const DayWeekView = ({ days }: { days: Date[] }) => {
+    const timeSlots = Array.from({ length: 16 }, (_, i) => `${String(i + 7).padStart(2, '0')}:00`); // 7 AM to 10 PM
+
+    const calculateEventPosition = (event: GoogleEvent) => {
+      const startHour = 7;
+      const totalHours = 16;
+      if (!event.start.dateTime || !event.end.dateTime) return { top: 0, height: 0 };
+
+      const startTime = new Date(event.start.dateTime);
+      const endTime = new Date(event.end.dateTime);
+      const startMinutes = Math.max(0, (startTime.getHours() - startHour) * 60 + startTime.getMinutes());
+      const endMinutes = Math.min(totalHours * 60, (endTime.getHours() - startHour) * 60 + endTime.getMinutes());
+      const durationMinutes = Math.max(15, endMinutes - startMinutes);
+
+      const top = (startMinutes / (totalHours * 60)) * 100;
+      const height = (durationMinutes / (totalHours * 60)) * 100;
+
+      return { top: `${top}%`, height: `${height}%` };
+    };
+
+    const allDayEvents = events.filter(e => e.start.date);
+
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {/* Header */}
+        <div className="flex sticky top-0 bg-white dark:bg-gray-800 z-10">
+          <div className="w-16 flex-shrink-0 border-r border-gray-100 dark:border-gray-700" />
+          <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+            {days.map(date => (
+              <div key={date.toISOString()} className="text-center py-3 border-b border-r border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 uppercase">{date.toLocaleDateString('id-ID', { weekday: 'short' })}</p>
+                <p className={`text-xl font-bold ${date.toDateString() === new Date().toDateString() ? 'text-blue-600' : 'text-gray-800 dark:text-white'}`}>{date.getDate()}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* All Day Events */}
+        {allDayEvents.length > 0 && (
+          <div className="flex border-b border-gray-200 dark:border-gray-700">
+            <div className="w-16 flex-shrink-0 border-r border-gray-100 dark:border-gray-700 text-center py-1">
+              <span className="text-xs text-gray-400">All-day</span>
+            </div>
+            <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+              {days.map(date => {
+                const dateStr = date.toISOString().split('T')[0];
+                const dayEvents = allDayEvents.filter(e => e.start.date === dateStr);
+                return (
+                  <div key={dateStr} className="border-r border-gray-100 dark:border-gray-700 p-1 space-y-1">
+                    {dayEvents.map(event => (
+                      <div key={event.id} onClick={() => setSelectedEvent(event)} className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs p-1 rounded truncate cursor-pointer">
+                        {event.summary}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Main Grid */}
+        <div className="flex overflow-auto max-h-[70vh]">
+          {/* Time Axis */}
+          <div className="w-16 flex-shrink-0 text-right pr-2 -mt-2">
+            {timeSlots.map(time => (
+              <div key={time} className="h-16 flex items-start justify-end text-xs text-gray-400 pt-1">
+                <span>{time}</span>
+              </div>
+            ))}
+          </div>
+          {/* Day Columns */}
+          <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+            {days.map((date, index) => {
+              const dateStr = date.toISOString().split('T')[0];
+              const dayEvents = events.filter(e => e.start.dateTime?.startsWith(dateStr));
+              return (
+                <div key={index} className="relative border-r border-gray-100 dark:border-gray-700">
+                  {/* Background grid lines */}
+                  {timeSlots.map(time => <div key={time} className="h-16 border-t border-gray-100 dark:border-gray-700/50"></div>)}
+                  {/* Events */}
+                  {dayEvents.map(event => {
+                    const { top, height } = calculateEventPosition(event);
+                    return (
+                      <div 
+                        key={event.id}
+                        onClick={() => setSelectedEvent(event)}
+                        style={{ top, height }} 
+                        className="absolute w-full px-1 cursor-pointer group"
+                      >
+                        <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 h-full rounded-lg p-2 overflow-hidden border border-blue-200 dark:border-blue-800 group-hover:border-blue-400 transition-all">
+                          <p className="text-xs font-bold line-clamp-1">{event.summary}</p>
+                          <p className="text-[10px] opacity-80">{new Date(event.start.dateTime!).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} - {new Date(event.end.dateTime!).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCalendarView = () => {
+    switch (viewMode) {
+      case 'day':
+        return <DayWeekView days={[currentDate]} />;
+      case 'week':
+        const startOfWeek = new Date(currentDate);
+        startOfWeek.setDate(currentDate.getDate() - currentDate.getDay()); // Sunday
+        const weekDates = Array.from({ length: 7 }, (_, i) => {
+            const date = new Date(startOfWeek);
+            date.setDate(startOfWeek.getDate() + i);
+            return date;
+        });
+        return <DayWeekView days={weekDates} />;
+      case 'month':
+      default:
+        return <MonthView />;
+    }
   };
 
   return (
@@ -750,7 +1006,7 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
       </div>
 
       {/* Calendar Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="animate-fade-in-up">
           {rooms.length === 0 && !isLoading ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="bg-gray-100 dark:bg-gray-700 p-6 rounded-full mb-4">
@@ -762,88 +1018,34 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
                   </p>
               </div>
           ) : (
-            <div className="p-6 animate-fade-in-up">
+            <div>
                {/* Calendar Header */}
                <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
                    <div className="flex items-center gap-3">
                        <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
-                           <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
+                           <button onClick={handlePrev} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
                                <ChevronLeft className="w-5 h-5"/>
                            </button>
-                           <span className="px-4 text-base font-bold text-gray-900 dark:text-white capitalize min-w-[160px] text-center select-none">
-                               {currentDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                           <span className="px-4 text-base font-bold text-gray-900 dark:text-white capitalize min-w-[200px] text-center select-none">
+                               {formatDateHeader()}
                            </span>
-                           <button onClick={() => changeMonth(1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
+                           <button onClick={handleNext} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors text-gray-600 dark:text-gray-300">
                                <ChevronRight className="w-5 h-5"/>
                            </button>
                        </div>
                        {isLoading && <Loader2 className="w-5 h-5 animate-spin text-blue-500"/>}
-                       <button onClick={goToToday} className="text-sm text-blue-600 hover:underline font-medium ml-2">
-                           Hari Ini
-                       </button>
                    </div>
-                   <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Total: {events.length} Kegiatan
+                   <div className="flex items-center gap-2">
+                      <button onClick={goToToday} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Hari Ini</button>
+                      <div className="flex items-center bg-gray-100 dark:bg-gray-900 p-1 rounded-lg">
+                        <button onClick={() => setViewMode('day')} className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${viewMode === 'day' ? 'bg-white dark:bg-gray-700 shadow text-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400'}`}>Hari</button>
+                        <button onClick={() => setViewMode('week')} className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${viewMode === 'week' ? 'bg-white dark:bg-gray-700 shadow text-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400'}`}>Minggu</button>
+                        <button onClick={() => setViewMode('month')} className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${viewMode === 'month' ? 'bg-white dark:bg-gray-700 shadow text-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400'}`}>Bulan</button>
+                      </div>
                    </div>
                </div>
                
-               {/* Calendar Grid */}
-               <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                   {/* Days Header */}
-                   <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                       {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (
-                           <div key={day} className="py-3 text-center text-sm font-semibold text-gray-600 dark:text-gray-300">
-                               {day}
-                           </div>
-                       ))}
-                   </div>
-                   
-                   {/* Days Grid */}
-                   <div className="grid grid-cols-7 auto-rows-fr bg-white dark:bg-gray-800">
-                       {calendarGrid.map((day, idx) => (
-                           <div 
-                               key={idx}
-                               onClick={() => handleDayClick(day)}
-                               className={`min-h-[120px] border-b border-r border-gray-100 dark:border-gray-700 p-2 transition-colors ${!day.isCurrentMonth ? 'bg-gray-50/50 dark:bg-gray-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer'}`}
-                           >
-                               {day.isCurrentMonth && (
-                                   <>
-                                       <div className={`text-sm font-medium mb-2 ${
-                                           day.fullDate === new Date().toISOString().split('T')[0] 
-                                           ? 'bg-blue-600 text-white w-7 h-7 flex items-center justify-center rounded-full' 
-                                           : 'text-gray-700 dark:text-gray-300'
-                                       }`}>
-                                           {day.date}
-                                       </div>
-                                       <div className="space-y-1">
-                                           {day.events.map(event => {
-                                               const isOverlapping = checkOverlap(event, day.events);
-                                               return (
-                                               <div 
-                                                   key={event.id}
-                                                   onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
-                                                   className={`block text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity cursor-pointer ${
-                                                       isOverlapping 
-                                                       ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' 
-                                                       : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-800'
-                                                   }`}
-                                                   title={`${event.summary}\n${formatEventTime(event.start.dateTime, event.start.date)}${isOverlapping ? '\n(Jadwal Bersamaan)' : ''}`}
-                                               >
-                                                   <div className="flex items-center">
-                                                       {isOverlapping && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-1.5 flex-shrink-0" />}
-                                                       {event.start.dateTime && <span className="font-mono text-[10px] mr-1 opacity-75 flex-shrink-0">{new Date(event.start.dateTime).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}</span>}
-                                                       <span className="truncate">{event.summary}</span>
-                                                   </div>
-                                               </div>
-                                               );
-                                           })}
-                                       </div>
-                                   </>
-                               )}
-                           </div>
-                       ))}
-                   </div>
-               </div>
+               {renderCalendarView()}
             </div>
           )}
       </div>
