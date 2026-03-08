@@ -27,6 +27,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const JadwalKuliah = lazy(() => import('./pages/JadwalKuliah'));
 const ManajemenSpesifikasi = lazy(() => import('./pages/ManajemenSpesifikasi'));
+const Tentang = lazy(() => import('./pages/Tentang'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -328,7 +329,7 @@ const App: React.FC = () => {
               <JadwalKuliah role={currentRole} showToast={showToast} />
             </ProtectedRoute>
           );
-        case 'specs-management':
+case 'specs-management':
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
@@ -338,6 +339,8 @@ const App: React.FC = () => {
               <ManajemenSpesifikasi role={currentRole} isDarkMode={isDarkMode} showToast={showToast} />
             </ProtectedRoute>
           );
+        case 'tentang':
+          return <Tentang />;
         default:
           return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
       }

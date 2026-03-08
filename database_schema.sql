@@ -38,12 +38,18 @@ CREATE TABLE users (
     avatar_image BYTEA,
     status user_status_enum DEFAULT 'Aktif',
     last_login TIMESTAMP,
+    password_changed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Contoh penerapan trigger pada tabel users
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+INSERT INTO users (id, nama, email, username, password, role, identifier, telepon, status)
+VALUES 
+('ADMIN-001', 'Administrator', 'admin.noc@core.fti', 'admin', '$2a$12$JOgQfS7L8RV4QOMnLpPQdeWeJgFaquVRouBIXml.EM0Lu54InxRAG', 'Admin', 'ADMIN001', '00000000000', 'Aktif');
+
 
 -- 1b. Tabel Staff
 -- Menyimpan data staff/laboran yang bisa menjadi PIC ruangan
@@ -329,6 +335,32 @@ CREATE INDEX idx_software_room ON software(room_id);
 CREATE INDEX idx_software_category ON software(category);
 CREATE INDEX idx_software_name ON software(name);
 
+-- 13. Tabel Error Logs (Log Error Aplikasi)
+CREATE TABLE error_logs (
+    id SERIAL PRIMARY KEY,
+    error_type VARCHAR(50) NOT NULL, -- 'API', 'NETWORK', 'VALIDATION', 'RUNTIME', 'DATABASE', 'AUTH', 'UNKNOWN'
+    error_message TEXT NOT NULL,
+    error_stack TEXT, -- Stack trace untuk debugging
+    endpoint VARCHAR(255), -- Endpoint API yang gagal (jika ada)
+    method VARCHAR(10), -- HTTP Method (GET, POST, etc)
+    user_id VARCHAR(50), -- User yang melakukan request (jika ada)
+    user_email VARCHAR(100), -- Email user untuk tracking
+    browser_info VARCHAR(255), -- Browser/User-Agent
+    ip_address VARCHAR(45),
+    severity VARCHAR(20) DEFAULT 'ERROR', -- 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+    is_resolved BOOLEAN DEFAULT FALSE,
+    resolved_by VARCHAR(50),
+    resolved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexing untuk Error Logs
+CREATE INDEX IF NOT EXISTS idx_error_logs_type ON error_logs(error_type);
+CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(is_resolved);
+CREATE INDEX IF NOT EXISTS idx_error_logs_user ON error_logs(user_id);
+
 CREATE TABLE user_tokens (
   id SERIAL PRIMARY KEY,
   user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -342,3 +374,38 @@ CREATE TABLE user_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_tokens_expires_at ON user_tokens(expires_at);
+
+-- 14. Tabel Database Connection Config
+-- Menyimpan konfigurasi koneksi database
+CREATE TABLE db_config (
+    id SERIAL PRIMARY KEY,
+    host VARCHAR(100) NOT NULL DEFAULT '192.168.68.62',
+    port VARCHAR(10) NOT NULL DEFAULT '5432',
+    database_name VARCHAR(100) NOT NULL DEFAULT 'dbcorefti',
+    username VARCHAR(100) NOT NULL DEFAULT 'corefti',
+    password VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default database config
+INSERT INTO db_config (host, port, database_name, username, password, is_active) 
+VALUES ('192.168.68.62', '5432', 'dbcorefti', 'corefti', 'c0r3ft1', TRUE);
+
+-- 15. Tabel Google SSO Config
+-- Menyimpan konfigurasi Google OAuth/SSO
+CREATE TABLE sso_config (
+    id SERIAL PRIMARY KEY,
+    enabled BOOLEAN DEFAULT TRUE,
+    client_id VARCHAR(255),
+    client_secret VARCHAR(255), -- Should be encrypted in production
+    redirect_uri VARCHAR(255),
+    domain VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default SSO config
+INSERT INTO sso_config (enabled, client_id, client_secret, redirect_uri, domain) 
+VALUES (TRUE, '782934-google-client-id-sample.apps.googleusercontent.com', 'GOCSPX-sample-secret-key', 'https://silab.fti.uksw.edu/auth/google/callback', 'student.uksw.edu');

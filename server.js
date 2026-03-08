@@ -50,14 +50,55 @@ app.use(express.json({ limit: '50mb' })); // Tingkatkan limit untuk upload gamba
 // Konfigurasi Upload (Simpan sementara di folder uploads/)
 const upload = multer({ dest: 'uploads/' });
 
-// Konfigurasi Koneksi Database
-const pool = new Pool({
-  user: process.env.DB_USER || 'corefti',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'dbcorefti',
-  password: process.env.DB_PASSWORD || 'c0r3ft1',
-  port: process.env.DB_PORT || 5432,
-});
+// Konfigurasi Koneksi Database - Sekarang menggunakan environment variables saja (tidak ada fallback)
+// Validation function to check required environment variables
+const validateDbConfig = () => {
+  const requiredVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
+  const missing = requiredVars.filter(v => !process.env[v]);
+  
+  if (missing.length > 0) {
+    console.error(`❌ Error: Variabel lingkungan database berikut belum diset: ${missing.join(', ')}`);
+    console.error('💡 Silakan pastikan file .env sudah dikonfigurasi dengan benar.');
+    process.exit(1);
+  }
+};
+
+// Validasi konfigurasi database saat startup
+validateDbConfig();
+
+// Buat konfigurasi pool dengan keamanan tambahan
+const dbConfig = {
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: parseInt(process.env.DB_PORT, 10),
+  // SSL configuration - wajib untuk production/hosting tertentu
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  // Connection pool settings untuk keamanan dan performa
+  max: 20, // max number of clients in the pool
+  idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
+  connectionTimeoutMillis: 5000, // how long to wait when connecting
+};
+
+// Logging konfigurasi database (dengan password tersembunyi)
+console.log('🔄 Menghubungkan ke database...');
+console.log(`   Host: ${dbConfig.host}:${dbConfig.port}`);
+console.log(`   Database: ${dbConfig.database}`);
+console.log(`   User: ${dbConfig.user}`);
+console.log(`   SSL: ${process.env.DB_SSL === 'true' ? 'Enabled' : 'Disabled'}`);
+
+const pool = new Pool(dbConfig);
+
+// Test koneksi database saat startup
+pool.query('SELECT NOW()')
+  .then(() => {
+    console.log('✅ Berhasil terhubung ke database PostgreSQL');
+  })
+  .catch((err) => {
+    console.error('❌ Gagal terhubung ke database:', err.message);
+    process.exit(1);
+  });
 
 // --- DATABASE INDEXES (Optimizations) ---
 const createIndexes = async () => {
@@ -209,10 +250,85 @@ app.get('/api/users/:id', verifyRole(['Admin', 'Laboran', 'User']), async (req, 
       role: row.role,
       identifier: row.identifier,
       phone: row.telepon || '',
+      status: row.status,
+      lastLogin: row.last_login ? new Date(row.last_login).toLocaleString('id-ID', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }) : null,
+      memberSince: row.created_at ? new Date(row.created_at).toLocaleString('id-ID', { 
+        month: 'long', 
+        year: 'numeric' 
+      }) : null,
       avatar: row.avatar_image ? `data:image/jpeg;base64,${row.avatar_image.toString('base64')}` : null
     });
   } catch (err) {
     res.status(500).json({ error: 'Gagal mengambil profil' });
+  }
+});
+
+// Endpoint Get User Account Info (for Profile page)
+app.get('/api/users/:id/account-info', verifyRole(['Admin', 'Laboran', 'User']), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Get user data
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User tidak ditemukan' });
+    
+    const user = userResult.rows[0];
+    
+    // Get unread notifications count
+    const notifResult = await pool.query(
+      'SELECT COUNT(*) as unread_count FROM notifications WHERE user_id = $1 AND is_read = FALSE',
+      [userId]
+    );
+    const unreadCount = parseInt(notifResult.rows[0]?.unread_count || '0');
+    
+    // Get user's booking count
+    const bookingResult = await pool.query(
+      'SELECT COUNT(*) as total_bookings FROM bookings WHERE user_id = $1',
+      [userId]
+    );
+    const totalBookings = parseInt(bookingResult.rows[0]?.total_bookings || '0');
+    
+    // Get user's loan count
+    const loanResult = await pool.query(
+      `SELECT COUNT(DISTINCT l.id) as total_loans 
+       FROM loans l 
+       JOIN transactions t ON l.transaction_id = t.id 
+       WHERE t.peminjam_identifier = $1`,
+      [user.identifier]
+    );
+    const totalLoans = parseInt(loanResult.rows[0]?.total_loans || '0');
+    
+    res.json({
+      status: user.status,
+      lastLogin: user.last_login ? new Date(user.last_login).toLocaleString('id-ID', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }) : 'Belum pernah login',
+      memberSince: user.created_at ? new Date(user.created_at).toLocaleString('id-ID', { 
+        month: 'long', 
+        year: 'numeric' 
+      }) : '-',
+      passwordChanged: user.password_changed_at ? new Date(user.password_changed_at).toLocaleString('id-ID', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      }) : 'Belum pernah diubah',
+      unreadNotifications: unreadCount,
+      totalBookings: totalBookings,
+      totalLoans: totalLoans
+    });
+  } catch (err) {
+    console.error('Error fetching account info:', err);
+    res.status(500).json({ error: 'Gagal mengambil informasi akun' });
   }
 });
 
@@ -248,6 +364,9 @@ app.post('/api/login', async (req, res) => {
     }
 
     if (user) {
+      // **[MODIFIKASI]** Update last_login on each login
+      await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+
       // Cek Status Akun (Hanya 'Aktif' yang boleh login)
       if (user.status !== 'Aktif') {
         return res.status(403).json({ error: 'Akun belum diaktifkan. Hubungi Admin Laboran (Ruang 227 atau 456).' });
@@ -311,8 +430,8 @@ app.post('/api/set-password', async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
-    // Update password dan pastikan status aktif
-    await pool.query('UPDATE users SET password = $1, status = $2 WHERE email = $3', [hashedPassword, 'Aktif', email]);
+    // Update password, status aktif, dan password_changed_at
+    await pool.query('UPDATE users SET password = $1, status = $2, password_changed_at = NOW() WHERE email = $3', [hashedPassword, 'Aktif', email]);
 
     res.json({ success: true, message: 'Password berhasil diperbarui. Silakan login.' });
   } catch (err) {
@@ -328,6 +447,7 @@ app.post('/api/register',
   body('password', 'Password minimal 8 karakter').isLength({ min: 8 }),
   body('fullName', 'Nama lengkap tidak boleh kosong').notEmpty().trim().escape(),
   body('username', 'Username tidak boleh kosong').notEmpty().trim().escape(),
+  body('username', 'Username tidak boleh mengandung spasi').custom(value => !/\s/.test(value)),
   async (req, res) => {
   
   // Cek hasil validasi
@@ -427,6 +547,15 @@ app.post('/api/users', verifyRole(['Admin']), async (req, res) => {
 app.put('/api/users/:id', verifyRole(['Admin', 'User']), async (req, res) => {
   const { name, email, username, identifier, phone, avatar, role } = req.body;
   try {
+    // Cek apakah username atau email sudah digunakan user lain
+    const check = await pool.query(
+      'SELECT id FROM users WHERE (username = $1 OR email = $2) AND id != $3',
+      [username, email, req.params.id]
+    );
+    if (check.rows.length > 0) {
+      return res.status(400).json({ error: 'Username atau Email sudah digunakan user lain.' });
+    }
+
     let query = "UPDATE users SET nama=$1, email=$2, username=$3, identifier=$4, telepon=$5";
     let params = [name, email, username, identifier, phone];
     let paramIndex = 6;
@@ -1789,11 +1918,11 @@ app.get('/api/settings/backup', (req, res) => {
   // Siapkan Environment Variables untuk pg_dump
   const env = {
     ...process.env,
-    PGHOST: process.env.DB_HOST || '0.0.0.0',
-    PGPORT: process.env.DB_PORT || '5432',
-    PGUSER: process.env.DB_USER || 'corefti',
-    PGPASSWORD: process.env.DB_PASSWORD || 'c0r3ft1',
-    PGDATABASE: process.env.DB_NAME || 'dbcorefti',
+    PGHOST: process.env.DB_HOST,
+    PGPORT: process.env.DB_PORT,
+    PGUSER: process.env.DB_USER,
+    PGPASSWORD: process.env.DB_PASSWORD,
+    PGDATABASE: process.env.DB_NAME,
   };
 
   // Jalankan pg_dump dan pipe outputnya langsung ke response
@@ -1824,11 +1953,11 @@ app.post('/api/settings/restore', upload.single('backupFile'), async (req, res) 
   // Siapkan Environment Variables untuk psql
   const env = {
     ...process.env,
-    PGHOST: process.env.DB_HOST || 'localhost',
-    PGPORT: process.env.DB_PORT || '5432',
-    PGUSER: process.env.DB_USER || 'corefti',
-    PGPASSWORD: process.env.DB_PASSWORD || 'c0r3ft1',
-    PGDATABASE: process.env.DB_NAME || 'dbcorefti',
+    PGHOST: process.env.DB_HOST,
+    PGPORT: process.env.DB_PORT,
+    PGUSER: process.env.DB_USER,
+    PGPASSWORD: process.env.DB_PASSWORD,
+    PGDATABASE: process.env.DB_NAME,
   };
 
   // Jalankan psql untuk restore
@@ -1863,7 +1992,7 @@ app.post('/api/settings/restore', upload.single('backupFile'), async (req, res) 
   });
 });
 
-// Endpoint Read Error Log
+// Endpoint Read Error Log (Legacy - from file)
 app.get('/api/settings/error-log', (req, res) => {
   const logPath = path.join(process.cwd(), 'server.log'); // Mencari file server.log di root folder
   
@@ -1878,6 +2007,425 @@ app.get('/api/settings/error-log', (req, res) => {
     res.json({ log: 'File log (server.log) tidak ditemukan di root folder. Pastikan server dijalankan dengan logging ke file.' });
   }
 });
+
+// --- ERROR LOGS API (Database-based) ---
+
+// Get Error Logs with filtering
+app.get('/api/error-logs', async (req, res) => {
+  try {
+    const { type, severity, resolved, startDate, endDate, limit = 100, offset = 0 } = req.query;
+    
+    let query = 'SELECT * FROM error_logs WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (type) {
+      query += ` AND error_type = $${paramIndex}`;
+      params.push(type);
+      paramIndex++;
+    }
+
+    if (severity) {
+      query += ` AND severity = $${paramIndex}`;
+      params.push(severity);
+      paramIndex++;
+    }
+
+    if (resolved !== undefined) {
+      query += ` AND is_resolved = $${paramIndex}`;
+      params.push(resolved === 'true');
+      paramIndex++;
+    }
+
+    if (startDate) {
+      query += ` AND created_at >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      query += ` AND created_at <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(Number(limit), Number(offset));
+
+    const result = await pool.query(query, params);
+
+    // Get total count for pagination
+    let countQuery = 'SELECT COUNT(*) as total FROM error_logs WHERE 1=1';
+    const countParams = [];
+    let countIndex = 1;
+
+    if (type) {
+      countQuery += ` AND error_type = $${countIndex}`;
+      countParams.push(type);
+      countIndex++;
+    }
+    if (severity) {
+      countQuery += ` AND severity = $${countIndex}`;
+      countParams.push(severity);
+      countIndex++;
+    }
+    if (resolved !== undefined) {
+      countQuery += ` AND is_resolved = $${countIndex}`;
+      countParams.push(resolved === 'true');
+      countIndex++;
+    }
+    if (startDate) {
+      countQuery += ` AND created_at >= $${countIndex}`;
+      countParams.push(startDate);
+      countIndex++;
+    }
+    if (endDate) {
+      countQuery += ` AND created_at <= $${countIndex}`;
+      countParams.push(endDate);
+      countIndex++;
+    }
+
+    const countResult = await pool.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].total);
+
+    const logs = result.rows.map(row => ({
+      id: row.id,
+      errorType: row.error_type,
+      errorMessage: row.error_message,
+      errorStack: row.error_stack,
+      endpoint: row.endpoint,
+      method: row.method,
+      userId: row.user_id,
+      userEmail: row.user_email,
+      browserInfo: row.browser_info,
+      ipAddress: row.ip_address,
+      severity: row.severity,
+      isResolved: row.is_resolved,
+      resolvedBy: row.resolved_by,
+      resolvedAt: row.resolved_at,
+      createdAt: row.created_at
+    }));
+
+    res.json({ logs, total, limit: Number(limit), offset: Number(offset) });
+  } catch (err) {
+    console.error('Get error logs error:', err);
+    res.status(500).json({ error: 'Gagal mengambil data error logs.' });
+  }
+});
+
+// Create Error Log
+app.post('/api/error-logs', async (req, res) => {
+  try {
+    const { 
+      errorType, 
+      errorMessage, 
+      errorStack, 
+      endpoint, 
+      method, 
+      userId, 
+      userEmail, 
+      severity = 'ERROR' 
+    } = req.body;
+
+    // Determine error type if not provided
+    let errorTypeValue = errorType || 'UNKNOWN';
+    if (!errorType && errorMessage) {
+      const msg = errorMessage.toLowerCase();
+      if (msg.includes('network') || msg.includes('fetch') || msg.includes('connection')) {
+        errorTypeValue = 'NETWORK';
+      } else if (msg.includes('validation') || msg.includes('invalid') || msg.includes('required')) {
+        errorTypeValue = 'VALIDATION';
+      } else if (msg.includes('unauthorized') || msg.includes('forbidden') || msg.includes('token')) {
+        errorTypeValue = 'AUTH';
+      } else if (msg.includes('database') || msg.includes('db') || msg.includes('sql')) {
+        errorTypeValue = 'DATABASE';
+      } else if (msg.includes('api') || msg.includes('endpoint')) {
+        errorTypeValue = 'API';
+      }
+    }
+
+    // Determine severity
+    let severityValue = severity;
+    if (!severity && errorMessage) {
+      const msg = errorMessage.toLowerCase();
+      if (msg.includes('critical') || msg.includes('fatal')) {
+        severityValue = 'CRITICAL';
+      } else if (msg.includes('warning')) {
+        severityValue = 'WARNING';
+      }
+    }
+
+    const browserInfo = req.headers['user-agent'] || 'Unknown';
+    const ipAddress = req.ip || req.connection.remoteAddress || 'Unknown';
+
+    const query = `
+      INSERT INTO error_logs 
+        (error_type, error_message, error_stack, endpoint, method, user_id, user_email, browser_info, ip_address, severity)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
+    `;
+
+    const result = await pool.query(query, [
+      errorTypeValue,
+      errorMessage,
+      errorStack || null,
+      endpoint || null,
+      method || null,
+      userId || null,
+      userEmail || null,
+      browserInfo,
+      ipAddress,
+      severityValue
+    ]);
+
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error('Create error log error:', err);
+    res.status(500).json({ error: 'Gagal menyimpan error log.' });
+  }
+});
+
+// Resolve Error Log
+app.put('/api/error-logs/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id; // From JWT token
+
+    await pool.query(
+      'UPDATE error_logs SET is_resolved = TRUE, resolved_by = $1, resolved_at = NOW() WHERE id = $2',
+      [userId, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Resolve error log error:', err);
+    res.status(500).json({ error: 'Gagal menyelesaikan error log.' });
+  }
+});
+
+// Delete/Clear Error Logs
+app.delete('/api/error-logs', async (req, res) => {
+  try {
+    const { resolved, olderThan } = req.body;
+
+    let query = 'DELETE FROM error_logs WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (resolved === true) {
+      query += ` AND is_resolved = $${paramIndex}`;
+      params.push(true);
+      paramIndex++;
+    }
+
+    if (olderThan) {
+      query += ` AND created_at < $${paramIndex}`;
+      params.push(olderThan);
+      paramIndex++;
+    }
+
+    const result = await pool.query(query, params);
+
+    res.json({ success: true, deleted: result.rowCount });
+  } catch (err) {
+    console.error('Delete error logs error:', err);
+    res.status(500).json({ error: 'Gagal menghapus error logs.' });
+  }
+});
+
+// Get Error Log Statistics
+app.get('/api/error-logs/stats', async (req, res) => {
+  try {
+    // Get counts by type
+    const typeStats = await pool.query(`
+      SELECT error_type, COUNT(*) as count 
+      FROM error_logs 
+      GROUP BY error_type 
+      ORDER BY count DESC
+    `);
+
+    // Get counts by severity
+    const severityStats = await pool.query(`
+      SELECT severity, COUNT(*) as count 
+      FROM error_logs 
+      GROUP BY severity 
+      ORDER BY count DESC
+    `);
+
+    // Get unresolved count
+    const unresolvedResult = await pool.query(
+      'SELECT COUNT(*) as count FROM error_logs WHERE is_resolved = FALSE'
+    );
+
+    // Get today's errors
+    const todayResult = await pool.query(`
+      SELECT COUNT(*) as count FROM error_logs 
+      WHERE created_at >= CURRENT_DATE
+    `);
+
+    res.json({
+      byType: typeStats.rows,
+      bySeverity: severityStats.rows,
+      unresolved: parseInt(unresolvedResult.rows[0].count),
+      today: parseInt(todayResult.rows[0].count)
+    });
+  } catch (err) {
+    console.error('Get error log stats error:', err);
+    res.status(500).json({ error: 'Gagal mengambil statistik error logs.' });
+  }
+});
+
+// --- DATABASE CONFIG API ---
+
+// Get Database Config
+app.get('/api/settings/db-config', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM db_config WHERE is_active = TRUE LIMIT 1');
+    if (result.rows.length === 0) {
+      return res.json({ host: '', port: '', database_name: '', username: '', password: '' });
+    }
+    const config = result.rows[0];
+    res.json({
+      host: config.host,
+      port: config.port,
+      database: config.database_name,
+      username: config.username,
+      password: config.password
+    });
+  } catch (err) {
+    console.error('Get DB config error:', err);
+    res.status(500).json({ error: 'Gagal mengambil konfigurasi database.' });
+  }
+});
+
+// Save Database Config
+app.post('/api/settings/db-config', async (req, res) => {
+  const { host, port, database, username, password } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Deactivate all existing configs
+    await client.query('UPDATE db_config SET is_active = FALSE');
+    
+    // Insert new config
+    await client.query(
+      'INSERT INTO db_config (host, port, database_name, username, password, is_active) VALUES ($1, $2, $3, $4, $5, TRUE)',
+      [host, port, database, username, password]
+    );
+    
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Konfigurasi database berhasil disimpan.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Save DB config error:', err);
+    res.status(500).json({ error: 'Gagal menyimpan konfigurasi database.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Test Database Connection
+app.post('/api/settings/db-config/test', async (req, res) => {
+  const { host, port, database, username, password } = req.body;
+  
+  // Create a temporary pool to test connection
+  const testPool = new Pool({
+    host,
+    port: parseInt(port),
+    database,
+    user: username,
+    password,
+    connectionTimeoutMillis: 5000
+  });
+  
+  try {
+    const result = await testPool.query('SELECT NOW()');
+    await testPool.end();
+    res.json({ success: true, message: 'Koneksi berhasil!' });
+  } catch (err) {
+    await testPool.end();
+    console.error('Test DB connection error:', err);
+    res.status(500).json({ error: 'Koneksi gagal. Periksa kembali parameter.' });
+  }
+});
+
+// --- SSO CONFIG API ---
+
+// Get SSO Config
+app.get('/api/settings/sso-config', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sso_config LIMIT 1');
+    if (result.rows.length === 0) {
+      return res.json({ enabled: false, clientId: '', clientSecret: '', redirectUri: '', domain: '' });
+    }
+    const config = result.rows[0];
+    res.json({
+      enabled: config.enabled,
+      clientId: config.client_id,
+      clientSecret: config.client_secret,
+      redirectUri: config.redirect_uri,
+      domain: config.domain
+    });
+  } catch (err) {
+    console.error('Get SSO config error:', err);
+    res.status(500).json({ error: 'Gagal mengambil konfigurasi SSO.' });
+  }
+});
+
+// Save SSO Config
+app.post('/api/settings/sso-config', async (req, res) => {
+  const { enabled, clientId, clientSecret, redirectUri, domain } = req.body;
+  try {
+    // Check if config exists
+    const existing = await pool.query('SELECT id FROM sso_config LIMIT 1');
+    
+    if (existing.rows.length > 0) {
+      // Update existing
+      await pool.query(
+        'UPDATE sso_config SET enabled = $1, client_id = $2, client_secret = $3, redirect_uri = $4, domain = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6',
+        [enabled, clientId, clientSecret, redirectUri, domain, existing.rows[0].id]
+      );
+    } else {
+      // Insert new
+      await pool.query(
+        'INSERT INTO sso_config (enabled, client_id, client_secret, redirect_uri, domain) VALUES ($1, $2, $3, $4, $5)',
+        [enabled, clientId, clientSecret, redirectUri, domain]
+      );
+    }
+    
+    res.json({ success: true, message: 'Konfigurasi SSO berhasil disimpan.' });
+  } catch (err) {
+    console.error('Save SSO config error:', err);
+    res.status(500).json({ error: 'Gagal menyimpan konfigurasi SSO.' });
+  }
+});
+
+// Helper function to automatically log errors from API calls
+const logError = async (error, req, customMessage = null) => {
+  try {
+    const errorType = error.type || 'API';
+    const errorMessage = customMessage || error.message || 'Unknown error';
+    const errorStack = error.stack || null;
+    const endpoint = req.path || null;
+    const method = req.method || null;
+    const userId = req.user?.id || null;
+    const userEmail = req.user?.email || null;
+    const severity = error.severity || 'ERROR';
+
+    const browserInfo = req.headers['user-agent'] || 'Unknown';
+    const ipAddress = req.ip || req.connection?.remoteAddress || 'Unknown';
+
+    await pool.query(
+      `INSERT INTO error_logs 
+        (error_type, error_message, error_stack, endpoint, method, user_id, user_email, browser_info, ip_address, severity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [errorType, errorMessage, errorStack, endpoint, method, userId, userEmail, browserInfo, ipAddress, severity]
+    );
+  } catch (logErr) {
+    console.error('Failed to log error to database:', logErr);
+  }
+};
 
 // Jalankan Server
 app.listen(port, () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap, ArrowRightLeft, BookOpen, Cpu } from 'lucide-react';
+import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap, ArrowRightLeft, BookOpen, Cpu, Info } from 'lucide-react';
 import { Role } from '../types';
 import nocLogo from "../src/assets/noc.png"; 
 
@@ -12,7 +12,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate, isOpen }) => {
   const menuGroups = [
-    {
+{
       title: 'Menu Utama',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
@@ -20,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
         { id: 'class-schedule', label: 'Jadwal Kuliah', icon: BookOpen, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'rooms', label: 'Daftar Ruangan', icon: Calendar, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
         { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'tentang', label: 'Tentang', icon: Info, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
       ]
     },
     {

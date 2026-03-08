@@ -305,7 +305,12 @@ const LaboranManagement: React.FC = () => {
                        <input 
                          type="text" required 
                          value={formData.phone} 
-                         onChange={e => setFormData({...formData, phone: e.target.value})}
+                         onChange={e => {
+                           const val = e.target.value;
+                           if (/^\d*$/.test(val)) {
+                             setFormData({...formData, phone: val});
+                           }
+                         }}
                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 transition-shadow"
                          placeholder="08xxxxxxxx"
                        />

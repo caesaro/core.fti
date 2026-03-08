@@ -42,6 +42,21 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const getPasswordStrength = (password: string) => {
+    if (!password) return { label: '', color: '' };
+    if (password.length < 8) return { label: 'Terlalu Pendek', color: 'text-red-500' };
+    
+    let score = 0;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[a-z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    if (score <= 2) return { label: 'Weak', color: 'text-red-500' };
+    if (score === 3) return { label: 'Medium', color: 'text-yellow-500' };
+    return { label: 'Strong', color: 'text-green-500' };
+  };
+
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     // Password boleh kosong jika dalam mode reset (admin reset password jadi NULL)
@@ -106,17 +121,18 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     e.preventDefault();
 
     // Validasi kekuatan password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(formData.password)) {
-      showToast(
-        'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, angka, dan simbol.',
-        'error'
-      );
+    if (formData.password.length < 8) {
+      showToast('Password harus minimal 8 karakter.', 'error');
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
       showToast('Password dan konfirmasi password tidak cocok!', 'error');
+      return;
+    }
+
+    if (/\s/.test(formData.username)) {
+      showToast('Username tidak boleh mengandung spasi.', 'error');
       return;
     }
 
@@ -171,9 +187,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     e.preventDefault();
 
     // Validasi kekuatan password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(formData.password)) {
-      showToast('Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, angka, dan simbol.', 'error');
+    if (formData.password.length < 8) {
+      showToast('Password harus minimal 8 karakter.', 'error');
       return;
     }
 
@@ -406,15 +421,17 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                    <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
                      <input name="password" type="password" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
+                     {formData.password && (
+                        <div className="mt-1 text-xs text-right">
+                           Strength: <span className={`font-bold ${getPasswordStrength(formData.password).color}`}>{getPasswordStrength(formData.password).label}</span>
+                        </div>
+                     )}
                    </div>
                    <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Konfirmasi</label>
                      <input name="confirmPassword" type="password" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
                    </div>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 !mt-2 px-1">
-                  Gunakan minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka, dan simbol (@$!%*?&).
-                </p>
                 
                 <button
                   type="submit"
@@ -477,6 +494,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                          <Lock className="h-5 w-5 text-gray-400" />
                       </div>
                       <input name="password" type="password" required onChange={handleChange} className="block w-full pl-10 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
+                      {formData.password && (
+                        <div className="mt-1 text-xs text-right">
+                           Strength: <span className={`font-bold ${getPasswordStrength(formData.password).color}`}>{getPasswordStrength(formData.password).label}</span>
+                        </div>
+                      )}
                    </div>
                 </div>
                 <div>
@@ -488,9 +510,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                       <input name="confirmPassword" type="password" required onChange={handleChange} className="block w-full pl-10 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
                    </div>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 !mt-2 px-1">
-                  Gunakan minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka, dan simbol (@$!%*?&).
-                </p>
 
                 <button
                   type="submit"
