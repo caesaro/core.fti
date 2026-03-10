@@ -280,23 +280,39 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
       setIsGapiInitialized(true);
     } catch (error: any) {
       console.error("Gagal inisialisasi GAPI:", error.result || error);
+      
+      // More detailed error detection
       let friendlyMessage = "Gagal memuat Google API. Cek konsol untuk detail.";
       
       const gapiError = error.result?.error;
-      if (gapiError && gapiError.status === 'PERMISSION_DENIED' && gapiError.message.includes('API has not been used')) {
-          friendlyMessage = "Google API tidak aktif. Hubungi admin untuk mengaktifkan Google Drive & Calendar API di Google Cloud Console.";
-      } else if (gapiError) {
-          friendlyMessage = `Gagal memuat Google API: ${gapiError.message}`;
+      const errorMessage = gapiError?.message || '';
+      const errorStatus = gapiError?.status || '';
+      
+      if (errorStatus === 'PERMISSION_DENIED' || errorStatus === 'RESOURCE_PROJECT_INVALID') {
+        if (errorMessage.includes('API has not been used') || errorMessage.includes('not enabled')) {
+          friendlyMessage = "Google Calendar API belum diaktifkan. Hubungi admin untuk mengaktifkan Google Calendar API di Google Cloud Console.";
+        } else if (errorMessage.includes('referer')) {
+          friendlyMessage = "API Key dibatasi oleh HTTP Referrer. Pastikan domain Anda sudah terdaftar di Google Cloud Console.";
+        } else if (errorMessage.includes('key')) {
+          friendlyMessage = "API Key tidak valid atau telah kedaluwarsa. Hubungi admin untuk memperbarui Google API Key.";
+        } else {
+          friendlyMessage = `Akses ditolak (403). Pastikan Google Calendar API sudah diaktifkan dan API Key tidak memiliki pembatasan yang ketat. Detail: ${errorMessage}`;
+        }
+      } else if (errorStatus === 'FORBIDDEN') {
+        friendlyMessage = "Akses Forbidden (403). Periksa konfigurasi API Key di Google Cloud Console.";
       }
+      
       showToast(friendlyMessage, "error");
+      setIsGapiInitialized(false);
     }
   };
 
   // Initialize GIS Client (Auth)
   const initializeGisClient = () => {
-    const scope = (role === Role.ADMIN || role === Role.LABORAN)
-      ? 'https://www.googleapis.com/auth/calendar.events' 
-      : 'https://www.googleapis.com/auth.calendar.events.readonly';
+    // Gunakan scope dari config yang sudah mencakup email & profile
+    const scope = (role === Role.ADMIN || role === Role.LABORAN) 
+      ? SCOPES.READWRITE 
+      : SCOPES.READONLY;
 
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
@@ -435,7 +451,7 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
       const eventResource: any = {
         'summary': eventForm.summary,
         'location': selectedRoom.name,
-        'description': eventForm.description + `\n\nDibuat oleh Admin () via Silab FTI`,
+        'description': eventForm.description + `\n\nDibuat oleh Admin () via CORE.FTI`,
         'start': {
           'dateTime': startDateTime.toISOString(),
           'timeZone': 'Asia/Jakarta'
@@ -558,7 +574,7 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
       const eventResource: any = {
         'summary': editEventForm.summary,
         'location': selectedRoom.name,
-        'description': editEventForm.description + `\n\nDiubah oleh Admin via Silab FTI`,
+        'description': editEventForm.description + `\n\nDiubah oleh Admin via CORE.FTI`,
         'start': {
           'dateTime': startDateTime.toISOString(),
           'timeZone': 'Asia/Jakarta'
@@ -730,4 +746,3 @@ const JadwalRuang: React.FC<ScheduleProps> = ({ role, showToast, isDarkMode }) =
 };
 
 export default JadwalRuang;
-

@@ -4,7 +4,7 @@
 
 # CORE.FTI - Campus Operational Resource Environment
 
-Sistem Informasi Manajemen Laboratorium FT (SILAB FTI) adalah aplikasi web untuk mengelola peminjaman ruangan, inventaris alat, dan aktivitas praktik kerja lapang (PKL) di lingkungan Fakultas Teknologi Informasi Universitas Kristen Satya Wacana.
+CORE.FTI (Campus Operational Resource Environment) adalah aplikasi web untuk mengelola peminjaman ruangan, inventaris alat, dan aktivitas praktik kerja lapang (PKL) di lingkungan Fakultas Teknologi Informasi Universitas Kristen Satya Wacana.
 
 ---
 

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import ExcelJS from 'exceljs';
+import ComputerForm from '../components/ComputerForm';
+import SoftwareForm from '../components/SoftwareForm';
 
 interface ManajemenSpesifikasiProps {
   role: Role;
@@ -91,19 +93,19 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
 
   // --- COMPUTER HANDLERS ---
 
-  const handleSaveComputer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingComputer || !selectedRoom) return;
+  const handleSaveComputer = async (computerData: Partial<RoomComputer>) => {
+    if (!selectedRoom) return;
 
     setIsSaving(true);
     const payload = {
-      ...editingComputer,
-      id: editingComputer.id || `PC-${Date.now()}`,
+      ...computerData,
+      id: computerData.id || `PC-${Date.now()}`,
       roomId: selectedRoom.id
     };
 
     try {
       await api('/api/computers', { method: 'POST', data: payload });
+      showToast("Data komputer berhasil disimpan.", "success");
       setEditingComputer(null);
       fetchRoomComputers();
     } catch (e) { 
@@ -117,6 +119,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
     if (confirm("Hapus data komputer ini?")) {
       try {
         await api(`/api/computers/${id}`, { method: 'DELETE' });
+        showToast("Data komputer berhasil dihapus.", "info");
         fetchRoomComputers();
       } catch (e) { alert("Gagal menghapus"); }
     }
@@ -127,6 +130,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
     if (confirm(`PERINGATAN: Hapus SEMUA data komputer di ${selectedRoom.name}?`)) {
       try {
         await api(`/api/rooms/${selectedRoom.id}/computers`, { method: 'DELETE' });
+        showToast(`Semua data komputer di ${selectedRoom.name} telah dihapus.`, "success");
         fetchRoomComputers();
       } catch (e) { alert("Gagal menghapus"); }
     }
@@ -268,22 +272,23 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
 
   // --- SOFTWARE HANDLERS ---
 
-  const handleSaveSoftware = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSoftware) return;
+  const handleSaveSoftware = async (softwareData: Partial<Software>) => {
+    if (!selectedRoom) return;
 
     setIsSaving(true);
     const payload = {
-      ...editingSoftware,
-      id: editingSoftware.id,
+      ...softwareData,
+      id: softwareData.id,
       roomId: selectedRoom?.id
     };
 
     try {
-      if (editingSoftware.id) {
-        await api(`/api/software/${editingSoftware.id}`, { method: 'PUT', data: payload });
+      if (softwareData.id) {
+        await api(`/api/software/${softwareData.id}`, { method: 'PUT', data: payload });
+        showToast("Data software berhasil diperbarui.", "success");
       } else {
         await api('/api/software', { method: 'POST', data: payload });
+        showToast("Software baru berhasil ditambahkan.", "success");
       }
       setEditingSoftware(null);
       fetchSoftware();
@@ -296,6 +301,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
     if (confirm("Hapus software ini?")) {
       try {
         await api(`/api/software/${id}`, { method: 'DELETE' });
+        showToast("Data software berhasil dihapus.", "info");
         fetchSoftware();
       } catch (e) { alert("Gagal menghapus"); }
     }
@@ -545,177 +551,24 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         </div>
       )}
 
-      {/* COMPUTER MODAL */}
-      {editingComputer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-              <h3 className="font-bold text-gray-900 dark:text-white">
-                {editingComputer.id ? 'Edit Komputer' : 'Tambah Komputer'}
-              </h3>
-              <button onClick={() => setEditingComputer(null)}><X className="w-5 h-5 text-gray-500"/></button>
-            </div>
-            <form onSubmit={handleSaveComputer} className="p-6 grid grid-cols-2 gap-4 max-h-[80vh] overflow-y-auto">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nomor PC</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">#</span>
-                  <input type="text" required value={editingComputer.pcNumber || ''} onChange={e => setEditingComputer({...editingComputer, pcNumber: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="PC-01"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">OS</label>
-                <input type="text" value={editingComputer.os || ''} onChange={e => setEditingComputer({...editingComputer, os: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Windows 11 Pro"/>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">CPU</label>
-                <div className="relative">
-                  <Cpu className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" required value={editingComputer.cpu || ''} onChange={e => setEditingComputer({...editingComputer, cpu: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Intel Core i7-12700"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Tipe GPU</label>
-                <select value={editingComputer.gpuType || 'Integrated'} onChange={e => setEditingComputer({...editingComputer, gpuType: e.target.value as any})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                  <option value="Integrated">Integrated</option>
-                  <option value="Dedicated">Dedicated (Card)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Model GPU</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-[10px] border border-gray-400 rounded-sm px-0.5">G</span>
-                  <input type="text" value={editingComputer.gpuModel || ''} onChange={e => setEditingComputer({...editingComputer, gpuModel: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="NVIDIA RTX 3060"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">VRAM</label>
-                <input type="text" value={editingComputer.vram || ''} onChange={e => setEditingComputer({...editingComputer, vram: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="12 GB"/>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">RAM</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-[10px] border border-gray-400 rounded-sm px-0.5">R</span>
-                  <input type="text" value={editingComputer.ram || ''} onChange={e => setEditingComputer({...editingComputer, ram: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="16 GB DDR4"/>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Storage</label>
-                <div className="relative">
-                  <HardDrive className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" value={editingComputer.storage || ''} onChange={e => setEditingComputer({...editingComputer, storage: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="SSD NVMe 512GB"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Monitor</label>
-                <div className="relative">
-                  <Monitor className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" value={editingComputer.monitor || ''} onChange={e => setEditingComputer({...editingComputer, monitor: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Dell 24 inch"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Keyboard</label>
-                <div className="relative">
-                  <Keyboard className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" value={editingComputer.keyboard || ''} onChange={e => setEditingComputer({...editingComputer, keyboard: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Mouse</label>
-                <div className="relative">
-                  <Mouse className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" value={editingComputer.mouse || ''} onChange={e => setEditingComputer({...editingComputer, mouse: e.target.value})} className="w-full pl-9 pr-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Kondisi</label>
-                <select value={editingComputer.condition || 'Baik'} onChange={e => setEditingComputer({...editingComputer, condition: e.target.value as any})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                  <option value="Baik">Baik</option>
-                  <option value="Rusak Ringan">Rusak Ringan</option>
-                  <option value="Rusak Berat">Rusak Berat</option>
-                </select>
-              </div>
-              <div className="col-span-2 flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={() => setEditingComputer(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Batal</button>
-                <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center disabled:opacity-50">
-                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ComputerForm 
+        isOpen={!!editingComputer}
+        onClose={() => setEditingComputer(null)}
+        onSave={handleSaveComputer}
+        initialData={editingComputer}
+        isSaving={isSaving}
+      />
 
-      {/* SOFTWARE MODAL */}
-      {editingSoftware && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-              <h3 className="font-bold text-gray-900 dark:text-white">
-                {editingSoftware.id ? 'Edit Software' : 'Tambah Software'}
-              </h3>
-              <button onClick={() => setEditingSoftware(null)}><X className="w-5 h-5 text-gray-500"/></button>
-            </div>
-            <form onSubmit={handleSaveSoftware} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nama Software</label>
-                <input type="text" required value={editingSoftware.name || ''} onChange={e => setEditingSoftware({...editingSoftware, name: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Microsoft Office"/>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Versi</label>
-                  <input type="text" value={editingSoftware.version || ''} onChange={e => setEditingSoftware({...editingSoftware, version: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="2021"/>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Kategori</label>
-                  <select value={editingSoftware.category || ''} onChange={e => setEditingSoftware({...editingSoftware, category: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    <option value="">-- Pilih --</option>
-                    <option value="Operating System">Operating System</option>
-                    <option value="Office">Office</option>
-                    <option value="Development Tool">Development Tool</option>
-                    <option value="Antivirus">Antivirus</option>
-                    <option value="Design">Design</option>
-                    <option value="Multimedia">Multimedia</option>
-                    <option value="Lainnya">Lainnya</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Tipe Lisensi</label>
-                <select value={editingSoftware.licenseType || 'Free'} onChange={e => setEditingSoftware({...editingSoftware, licenseType: e.target.value as any})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                  <option value="Free">Free</option>
-                  <option value="Commercial">Commercial</option>
-                  <option value="Open Source">Open Source</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Vendor</label>
-                  <input type="text" value={editingSoftware.vendor || ''} onChange={e => setEditingSoftware({...editingSoftware, vendor: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Microsoft"/>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Tanggal Install</label>
-                  <input type="date" value={editingSoftware.installDate || ''} onChange={e => setEditingSoftware({...editingSoftware, installDate: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Catatan</label>
-                <textarea value={editingSoftware.notes || ''} onChange={e => setEditingSoftware({...editingSoftware, notes: e.target.value})} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" rows={2} placeholder="Catatan opsional..."/>
-              </div>
-              <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={() => setEditingSoftware(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Batal</button>
-                <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center disabled:opacity-50">
-                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <SoftwareForm
+        isOpen={!!editingSoftware}
+        onClose={() => setEditingSoftware(null)}
+        onSave={handleSaveSoftware}
+        initialData={editingSoftware}
+        isSaving={isSaving}
+      />
     </div>
   );
 };
+
 
 export default ManajemenSpesifikasi;

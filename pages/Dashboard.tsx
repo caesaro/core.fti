@@ -142,7 +142,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
     );
     const availableRooms = rooms.length - bookedRoomIds.size;
     
-    const totalUsers = users.length;
+    const totalUsers = users.filter(u => u.role !== 'Admin').length;
     const damagedEquipment = equipment.filter(e => e.condition !== 'Baik').length;
     const totalEquipment = equipment.length;
 

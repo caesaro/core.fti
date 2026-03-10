@@ -9,9 +9,10 @@ interface RoomFormProps {
   onCancel: () => void;
   staffList: { id: string; name: string; jabatan: string }[];
   availableFacilities: string[];
+  isSaving?: boolean;
 }
 
-const RoomForm: React.FC<RoomFormProps> = ({ initialData, isEditing, onSave, onCancel, staffList, availableFacilities }) => {
+const RoomForm: React.FC<RoomFormProps> = ({ initialData, isEditing, onSave, onCancel, staffList, availableFacilities, isSaving = false }) => {
   const [formData, setFormData] = useState(initialData);
   const [isImageProcessing, setIsImageProcessing] = useState(false);
   const [newFacilityInput, setNewFacilityInput] = useState('');
@@ -113,7 +114,18 @@ const RoomForm: React.FC<RoomFormProps> = ({ initialData, isEditing, onSave, onC
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PIC (Penanggung Jawab)</label>
-            <select value={formData.pic_id || ''} onChange={e => setFormData({ ...formData, pic_id: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500">
+            <select 
+              value={(formData as any).pic_id || staffList.find(s => s.name === formData.pic)?.id || ''} 
+              onChange={e => {
+                const selectedStaff = staffList.find(s => s.id === e.target.value);
+                setFormData({ 
+                  ...formData, 
+                  pic: selectedStaff ? selectedStaff.name : '',
+                  pic_id: e.target.value 
+                } as any);
+              }} 
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
               <option value="">-- Tidak Ada PIC --</option>
               {staffList.map(tech => (
                 <option key={tech.id} value={tech.id}>{tech.name} ({tech.jabatan || 'Staff'})</option>
@@ -138,8 +150,17 @@ const RoomForm: React.FC<RoomFormProps> = ({ initialData, isEditing, onSave, onC
           </div>
         </div>
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <button type="button" onClick={onCancel} className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Batal</button>
-          <button type="submit" disabled={isImageProcessing} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">Simpan</button>
+          <button type="button" onClick={onCancel} disabled={isSaving} className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">Batal</button>
+          <button type="submit" disabled={isImageProcessing || isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center">
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Menyimpan...
+              </>
+            ) : (
+              'Simpan'
+            )}
+          </button>
         </div>
       </form>
     </div>

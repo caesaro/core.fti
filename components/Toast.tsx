@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { ToastMessage } from '../types';
 
@@ -10,23 +10,66 @@ interface ToastProps {
 
 const Toast: React.FC<ToastProps> = ({ toasts, removeToast, isDarkMode }) => {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} removeToast={removeToast} isDarkMode={isDarkMode} />
-      ))}
-    </div>
+    <>
+      <style>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes slideOut {
+          from {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+        }
+        @keyframes progress {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+        .animate-slide-in {
+          animation: slideIn 0.3s ease-out forwards;
+        }
+        .animate-slide-out {
+          animation: slideOut 0.3s ease-in forwards;
+        }
+        .animate-progress {
+          animation: progress 5s linear forwards;
+        }
+        .toast-item:hover .animate-progress {
+          animation-play-state: paused;
+        }
+      `}</style>
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        {toasts.map((toast) => (
+          <ToastItem key={toast.id} toast={toast} removeToast={removeToast} isDarkMode={isDarkMode} />
+        ))}
+      </div>
+    </>
   );
 };
 
 const ToastItem = ({ toast, removeToast, isDarkMode }: { toast: ToastMessage; removeToast: (id: string) => void; isDarkMode?: boolean }) => {
-  // Auto-dismiss setelah 5 detik
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      removeToast(toast.id);
-    }, 5000);
+  const [isExiting, setIsExiting] = useState(false);
 
-    return () => clearTimeout(timer);
-  }, [toast.id, removeToast]);
+  // Hapus dari state setelah animasi selesai
+  useEffect(() => {
+    if (isExiting) {
+      const timer = setTimeout(() => {
+        removeToast(toast.id);
+      }, 300); // Sesuai durasi animasi (0.3s)
+      return () => clearTimeout(timer);
+    }
+  }, [isExiting, toast.id, removeToast]);
 
   const icons = {
     success: <CheckCircle className={`w-5 h-5 ${isDarkMode ? 'text-green-400' : 'text-green-500'}`} />,
@@ -50,8 +93,10 @@ const ToastItem = ({ toast, removeToast, isDarkMode }: { toast: ToastMessage; re
   return (
     <div 
       className={`
+        toast-item
         pointer-events-auto flex items-start p-4 rounded-lg border shadow-lg 
-        transition-all duration-300 animate-slide-in min-w-[300px] max-w-md
+        transition-all duration-300 min-w-[300px] max-w-md relative overflow-hidden
+        ${isExiting ? 'animate-slide-out' : 'animate-slide-in'}
         ${styles[toast.type]}
       `}
     >
@@ -62,12 +107,18 @@ const ToastItem = ({ toast, removeToast, isDarkMode }: { toast: ToastMessage; re
         {toast.message}
       </div>
       <button
-        onClick={() => removeToast(toast.id)}
+        onClick={() => setIsExiting(true)}
         className={`ml-3 transition-colors focus:outline-none ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
         aria-label="Close"
       >
         <X className="w-4 h-4" />
       </button>
+      {!toast.sticky && (
+        <div 
+          className="absolute bottom-0 left-0 h-1 bg-current opacity-40 animate-progress" 
+          onAnimationEnd={() => setIsExiting(true)}
+        />
+      )}
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Room, Booking } from '../types';
-import { MapPin, Plus, Trash2, Loader2, Check, FileText, User } from 'lucide-react';
+import { MapPin, Plus, Trash2, Loader2, Check, FileText, User, Search } from 'lucide-react';
 import { api } from '../services/api';
 
 interface BookingFormProps {
@@ -20,6 +20,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(initialRoomId || '');
+  const [roomSearch, setRoomSearch] = useState('');
 
   const [bookingForm, setBookingForm] = useState<Partial<Booking>>({
     purpose: '',
@@ -31,6 +32,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
     { date: '', startTime: '', endTime: '' },
   ]);
   const [bookingFile, setBookingFile] = useState<File | null>(null);
+
+  const filteredRooms = rooms.filter(room => 
+    room.name.toLowerCase().includes(roomSearch.toLowerCase())
+  );
 
   const selectedRoom = rooms.find(r => r.id === selectedRoomId);
 
@@ -124,29 +129,40 @@ const BookingForm: React.FC<BookingFormProps> = ({
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ruangan</label>
-          <div className="relative">
-            <MapPin className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <div>
             {initialRoomId && selectedRoom ? (
               <input
                 type="text"
                 value={`${selectedRoom.name} (Kapasitas: ${selectedRoom.capacity})`}
                 disabled
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 cursor-not-allowed"
+                className="w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 cursor-not-allowed"
               />
             ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input 
+                    type="text"
+                    placeholder="Cari nama ruangan..."
+                    value={roomSearch}
+                    onChange={e => setRoomSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
               <select
                 value={selectedRoomId}
                 onChange={e => setSelectedRoomId(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                 required
               >
                 <option value="">-- Pilih Ruangan --</option>
-                {rooms.map(room => (
+                {filteredRooms.map(room => (
                   <option key={room.id} value={room.id}>
                     {room.name} (Kapasitas: {room.capacity})
                   </option>
                 ))}
               </select>
+              </div>
             )}
           </div>
         </div>

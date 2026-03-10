@@ -56,6 +56,52 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
   const [deleteOption, setDeleteOption] = useState<'single' | 'thisAndFollowing' | 'all'>('single');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Delete Booking State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [bookingToDelete, setBookingToDelete] = useState<BookingWithTech | null>(null);
+
+  // Handle delete booking click
+  const handleDeleteClick = (booking: BookingWithTech) => {
+    setBookingToDelete(booking);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Handle confirm delete booking (both from database and Google Calendar)
+  const handleConfirmDelete = async () => {
+    if (!bookingToDelete) return;
+    setIsDeleting(true);
+
+    // Try to delete from Google Calendar first (if approved)
+    if (bookingToDelete.status === BookingStatus.APPROVED && isGapiInitialized) {
+      const gapiResult: any = await deleteFromGoogleCalendar(bookingToDelete, 'all');
+      if (!gapiResult.success && gapiResult.message !== "Dilewati: Tidak ada URL Kalender" && gapiResult.message !== "Event tidak ditemukan di Google Calendar") {
+        showToast(`Peringatan: Gagal hapus dari Calendar (${gapiResult.message}), namun data tetap dihapus.`, 'warning');
+      }
+    }
+
+    // Delete from database
+    try {
+      const response = await api(`/api/bookings/${bookingToDelete.id}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        showToast("Booking berhasil dihapus dari database dan Google Calendar!", "success");
+        // Refresh data
+        fetchData();
+        setSelectedBooking(null);
+      } else {
+        showToast("Gagal menghapus booking dari database", "error");
+      }
+    } catch (e) {
+      showToast("Gagal menghapus booking", "error");
+    }
+
+    setIsDeleting(false);
+    setIsDeleteModalOpen(false);
+    setBookingToDelete(null);
+  };
+
   const [isGapiInitialized, setIsGapiInitialized] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
 
@@ -155,7 +201,8 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
   };
 
   const initializeGisClient = () => {
-    const client = window.google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: () => {} });
+    // FIX: SCOPES adalah object, harus ambil string spesifik (READWRITE untuk fitur ini)
+    const client = window.google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES.READWRITE, callback: () => {} });
     setTokenClient(client);
   };
 
@@ -211,7 +258,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
         resource: {
           summary: `[BOOKED] ${booking.purpose}`,
           location: roomName,
-          description: `Peminjam: ${booking.userName}\nPJ: ${booking.responsiblePerson}\nKontak: ${booking.contactPerson}\n\nDisetujui via Silab FTI.`,
+          description: `Peminjam: ${booking.userName}\nPJ: ${booking.responsiblePerson}\nKontak: ${booking.contactPerson}\n\nDisetujui via CORE.FTI.`,
           start: { dateTime: startDateTime.toISOString() },
           end: { dateTime: endDateTime.toISOString() }
         }
@@ -806,6 +853,13 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
                     <AlertTriangle className="w-4 h-4 mr-2" />
                     Batalkan
                   </button>
+                  <button
+                    onClick={() => { setSelectedBooking(null); handleDeleteClick(selectedBooking); }}
+                    className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 border border-red-600 rounded-lg flex items-center shadow-sm transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Hapus Data
+                  </button>
                 </>
               )}
 
@@ -1002,6 +1056,60 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
                 <button onClick={handleConfirmDeleteCalendar} disabled={isDeleting} className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md flex items-center disabled:opacity-50">
                   {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
                   Hapus dari Calendar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Booking Confirmation Modal */}
+      {isDeleteModalOpen && bookingToDelete && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20">
+              <h3 className="font-bold text-red-800 dark:text-red-400 flex items-center">
+                <Trash2 className="w-5 h-5 mr-2" />
+                Hapus Data Peminjaman
+              </h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+                  ⚠️ Peringatan! Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Anda akan menghapus data peminjaman berikut secara permanen:
+              </p>
+              <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Peminjam:</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{bookingToDelete.userName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Ruangan:</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{getRoomName(bookingToDelete.roomId)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Tanggal:</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{bookingToDelete.date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Keperluan:</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{bookingToDelete.purpose}</span>
+                </div>
+              </div>
+              {bookingToDelete.status === BookingStatus.APPROVED && (
+                <p className="text-xs text-orange-600 dark:text-orange-400">
+                  * Jika peminjaman sudah disetujui, event di Google Calendar juga akan dihapus.
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
+                <button onClick={handleConfirmDelete} disabled={isDeleting} className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md flex items-center disabled:opacity-50">
+                  {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                  Hapus Permanen
                 </button>
               </div>
             </div>

@@ -47,7 +47,29 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
     } catch (e) { console.error(e); }
   };
 
-  const filteredMovements = movements.filter(m => {
+  // Group movements by inventory ID and get only the latest movement per item
+  const latestMovementsByItem = React.useMemo(() => {
+    const grouped = movements.reduce((groups, movement) => {
+      const key = movement.inventoryId;
+      if (!groups[key]) {
+        groups[key] = movement;
+      } else {
+        // Keep the latest movement (by date, then by createdAt)
+        const existing = groups[key];
+        const existingDate = new Date(existing.movementDate);
+        const newDate = new Date(movement.movementDate);
+        if (newDate > existingDate || 
+            (newDate.getTime() === existingDate.getTime() && 
+             new Date(movement.createdAt || 0) > new Date(existing.createdAt || 0))) {
+          groups[key] = movement;
+        }
+      }
+      return groups;
+    }, {} as Record<string, ItemMovement>);
+    return Object.values(grouped);
+  }, [movements]);
+
+  const filteredMovements = latestMovementsByItem.filter(m => {
     const matchesSearch = (m.inventoryName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          m.fromPerson?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          m.toPerson?.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -206,12 +228,10 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium">
               <tr>
-                <th className="px-6 py-4">Tanggal</th>
                 <th className="px-6 py-4">Barang</th>
                 <th className="px-6 py-4">Jenis</th>
-                <th className="px-6 py-4">Dari</th>
-                <th className="px-6 py-4">Ke</th>
-                <th className="px-6 py-4">Lokasi</th>
+                <th className="px-6 py-4">Lokasi Sebelum</th>
+                <th className="px-6 py-4">Lokasi Sekarang</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
@@ -219,28 +239,22 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
               {filteredMovements.length > 0 ? filteredMovements.map((movement) => (
                 <tr key={movement.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td className="px-6 py-4">
-                    <div className="flex items-center text-gray-900 dark:text-white">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                      {movement.movementDate}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
                     <div className="font-medium text-gray-900 dark:text-white">{movement.inventoryName || getEquipmentName(movement.inventoryId)}</div>
-                    <div className="text-xs text-gray-500">{movement.quantity} unit</div>
+                    <div className="text-xs text-gray-500">{movement.movementDate}</div>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${getTypeColor(movement.movementType)}`}>
                       {movement.movementType}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                    {movement.fromPerson || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                    {movement.toPerson || '-'}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center text-gray-500 dark:text-gray-400 text-sm">
+                      <MapPin className="w-3 h-3 mr-1" />
+                      {movement.fromLocation || '-'}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs">
+                    <div className="flex items-center text-gray-500 dark:text-gray-400 text-sm">
                       <MapPin className="w-3 h-3 mr-1" />
                       {movement.toLocation || '-'}
                     </div>
@@ -267,7 +281,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center">
                       <ArrowRightLeft className="w-12 h-12 text-gray-300 mb-3" />
                       <p>Tidak ada data perpindahan.</p>
@@ -458,11 +472,11 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
                   <span className="font-medium text-gray-900 dark:text-white">{selectedMovement.toPerson || '-'}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                  <span className="text-gray-500 dark:text-gray-400">Lokasi Asal</span>
+                  <span className="text-gray-500 dark:text-gray-400">Lokasi Sebelum</span>
                   <span className="font-medium text-gray-900 dark:text-white">{selectedMovement.fromLocation || '-'}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                  <span className="text-gray-500 dark:text-gray-400">Lokasi Tujuan</span>
+                  <span className="text-gray-500 dark:text-gray-400">Lokasi Sekarang</span>
                   <span className="font-medium text-gray-900 dark:text-white">{selectedMovement.toLocation || '-'}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">

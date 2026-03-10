@@ -241,7 +241,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                 </label>
                                 <label className="flex items-center space-x-2 text-sm cursor-pointer">
                                     <input type="checkbox" checked={shareConfig.tech} onChange={() => toggleConfig('tech')} className="rounded text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-gray-700 dark:text-gray-300">Info Teknis</span>
+                                    <span className="text-gray-700 dark:text-gray-300">Info PIC Laboran</span>
                                 </label>
                                 <label className="flex items-center space-x-2 text-sm cursor-pointer">
                                     <input type="checkbox" checked={shareConfig.needs} onChange={() => toggleConfig('needs')} className="rounded text-blue-600 focus:ring-blue-500" />
@@ -335,7 +335,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                     <div className="pt-4 space-y-3">
                                         {shareConfig.tech && selectedEvent.techSupportPicName && (
                                             <div>
-                                                <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1 flex items-center"><Wrench className="w-3 h-3 mr-1"/> Tech Support</p>
+                                                <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1 flex items-center"><Wrench className="w-3 h-3 mr-1"/> PIC Teknis Laboran</p>
                                                 <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{selectedEvent.techSupportPicName}</p>
                                             </div>
                                         )}

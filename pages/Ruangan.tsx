@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Room, Role, BookingStatus, Booking, RoomComputer } from '../types';
-import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight, X, Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet, ChevronLeft } from 'lucide-react';
+import { Room, Role, BookingStatus, Booking, RoomComputer, Software } from '../types';
+import { Search, MapPin, Users, Wifi, Edit2, Trash2, Calendar, Eye, Check, Plus, Upload, Loader2, ArrowUpDown, ExternalLink, FileText, User, LogIn, RefreshCw, Clock, ChevronRight, X, Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet, ChevronLeft, Package } from 'lucide-react';
 import { api } from '../services/api';
+import SoftwareForm from '../components/SoftwareForm';
 import RoomForm from '../components/RoomForm';
 import BookingForm from '../components/BookingForm';
 import { CLIENT_ID, API_KEY, DISCOVERY_DOCS, SCOPES } from '../src/config/google';
@@ -14,8 +15,6 @@ declare global {
     google: any;
   }
 }
-
-const FTI_DRIVE_FOLDER_ID = ''; 
 
 interface RoomsProps {
   role: Role;
@@ -175,6 +174,18 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [dominantSpec, setDominantSpec] = useState<any>(null);
   const [editingComputer, setEditingComputer] = useState<Partial<RoomComputer> | null>(null);
 
+  // Software State
+  const [roomSoftware, setRoomSoftware] = useState<Software[]>([]);
+  const [editingSoftware, setEditingSoftware] = useState<Partial<Software> | null>(null);
+  // Software for List View (mapped by roomId)
+  const [roomSoftwareMap, setRoomSoftwareMap] = useState<{ [roomId: string]: Software[] }>({});
+
+  // Loading States for CRUD operations
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
+  const [isSavingComputer, setIsSavingComputer] = useState(false);
+  const [isSavingSoftware, setIsSavingSoftware] = useState(false);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+
   // Filter Active Technicians for PIC Dropdown
   const activeTechnicians = labStaff; // API /api/staff already filters Active
 
@@ -182,7 +193,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const filteredRooms = rooms
     .filter(room => 
       room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      room.description.toLowerCase().includes(searchTerm.toLowerCase())
+      (room.description || '').toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
@@ -214,6 +225,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   useEffect(() => {
     fetchRooms();
     fetchStaff();
+    fetchAllSoftware();
   }, []);
 
   const fetchRooms = async () => {
@@ -332,8 +344,46 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
       } catch (e) { console.error(e); }
   };
 
+  const fetchRoomSoftware = async () => {
+      if (!selectedRoom) return;
+      try {
+          const res = await api(`/api/software?roomId=${selectedRoom.id}`);
+          if (res.ok) {
+              const data = await res.json();
+              setRoomSoftware(data);
+          }
+      } catch (e) { console.error(e); }
+  };
+
+  // Fetch software for all Laboratorium Komputer rooms (for list view)
+  const fetchAllSoftware = async () => {
+      try {
+          const res = await api('/api/software');
+          if (res.ok) {
+              const allSoftware: Software[] = await res.json();
+              // Group software by roomId
+              const softwareMap: { [roomId: string]: Software[] } = {};
+              allSoftware.forEach((sw: Software) => {
+                  if (sw.roomId) {
+                      if (!softwareMap[sw.roomId]) {
+                          softwareMap[sw.roomId] = [];
+                      }
+                      softwareMap[sw.roomId].push(sw);
+                  }
+              });
+              setRoomSoftwareMap(softwareMap);
+          }
+      } catch (e) { console.error(e); }
+  };
+
   useEffect(() => {
-      if (viewMode === 'detail' && selectedRoom) fetchDominantSpec();
+      if (viewMode === 'detail' && selectedRoom) {
+          fetchDominantSpec();
+          // Fetch software for Laboratorium Komputer rooms
+          if (selectedRoom.category === 'Laboratorium Komputer') {
+              fetchRoomSoftware();
+          }
+      }
       if (viewMode === 'computers' && selectedRoom) fetchRoomComputers();
   }, [viewMode, selectedRoom]);
 
@@ -456,6 +506,9 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
       return;
     }
 
+    // Set loading state
+    setIsSavingRoom(true);
+
     // Bersihkan fasilitas dari string kosong sebelum kirim
     const payload = {
         ...submittedData,
@@ -485,6 +538,8 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
       }
     } catch (e) {
       alert("Gagal menyimpan data");
+    } finally {
+      setIsSavingRoom(false);
     }
   };
 
@@ -530,6 +585,48 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     }
   };
 
+  // Software management functions
+  const handleDeleteSoftware = async (id: string) => {
+    if (!selectedRoom) return;
+    if (confirm("Hapus data software ini?")) {
+      try {
+        await api(`/api/software/${id}`, { method: 'DELETE' });
+        fetchRoomSoftware();
+      } catch (e) {
+        alert("Gagal menghapus data software");
+      }
+    }
+  };
+
+  const handleSaveSoftware = async (softwareData: Partial<Software>) => {
+    if (!selectedRoom) return;
+
+    try {
+      let response;
+      const payload = {
+        ...softwareData,
+        roomId: selectedRoom.id
+      };
+      
+      if (softwareData.id) {
+        response = await api(`/api/software/${softwareData.id}`, {
+          method: 'PUT',
+          data: payload
+        });
+      } else {
+        response = await api('/api/software', {
+          method: 'POST',
+          data: payload
+        });
+      }
+
+      if (response.ok) {
+        setEditingSoftware(null);
+        fetchRoomSoftware();
+      }
+    } catch (e) { console.error(e); }
+  };
+
   // Calendar Visual Logic
   const getDaysInMonth = () => Array.from({length: 30}, (_, i) => i + 1);
   const isBooked = (day: number) => day % 3 === 0; // Mock
@@ -545,6 +642,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
         onCancel={() => setViewMode('list')}
         staffList={labStaff.filter(s => s.status === 'Aktif')}
         availableFacilities={availableFacilities}
+        isSaving={isSavingRoom}
       />
     );
   }
@@ -683,6 +781,66 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                                     <span>Jadwal tersedia via Google Calendar</span>
                                  </div>
                               )}
+
+                              {/* Software Section - Only for Laboratorium Komputer */}
+                              {selectedRoom.category === 'Laboratorium Komputer' && (
+                              <div className="mb-8">
+                                  <div className="flex justify-between items-center mb-3">
+                                      <h3 className="text-xl font-semibold text-gray-800 dark:text-white flex items-center">
+                                          <Package className="w-5 h-5 mr-2 text-purple-500"/> Software Instalasi
+                                      </h3>
+                                      {(isAdmin || role === Role.LABORAN) && (
+                                          <button 
+                                              onClick={() => setEditingSoftware({ name: '', version: '', licenseType: 'Free', category: '', notes: '' })}
+                                              className="text-sm text-blue-600 hover:underline font-medium"
+                                          >
+                                              + Tambah Software
+                                          </button>
+                                      )}
+                                  </div>
+                                  
+                                  {roomSoftware.length > 0 ? (
+                                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+                                          <div className="flex items-center justify-between mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
+                                              <span className="text-sm font-bold text-gray-500 uppercase">Daftar Software ({roomSoftware.length} aplikasi)</span>
+                                          </div>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                              {roomSoftware.map((sw) => (
+                                                  <div key={sw.id} className="flex items-start justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                      <div>
+                                                          <span className="block font-medium text-gray-900 dark:text-white">{sw.name}</span>
+                                                          <span className="text-xs text-gray-500">v{sw.version} • {sw.category || 'General'}</span>
+                                                          {sw.licenseType && (
+                                                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${sw.licenseType === 'Free' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : sw.licenseType === 'Commercial' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                                                  {sw.licenseType}
+                                                              </span>
+                                                          )}
+                                                      </div>
+                                                      {(isAdmin || role === Role.LABORAN) && (
+                                                          <div className="flex space-x-1">
+                                                              <button onClick={() => setEditingSoftware(sw)} className="text-blue-600 hover:text-blue-800 p-1"><Edit2 className="w-3 h-3"/></button>
+                                                              <button onClick={() => handleDeleteSoftware(sw.id)} className="text-red-600 hover:text-red-800 p-1"><Trash2 className="w-3 h-3"/></button>
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                  ) : (
+                                      <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg text-center text-gray-500 text-sm italic">
+                                          Belum ada data software. Klik "+ Tambah Software" untuk menambahkan.
+                                      </div>
+                                  )}
+                              </div>
+                              )}
+
+                              <SoftwareForm
+                                isOpen={!!editingSoftware}
+                                onClose={() => setEditingSoftware(null)}
+                                onSave={handleSaveSoftware}
+                                initialData={editingSoftware}
+                                isSaving={isSavingSoftware}
+                              />
                           </div>
 
                           <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -974,11 +1132,29 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                 </div>
                 <p className="text-gray-500 dark:text-gray-400 text-sm line-clamp-2 mb-4 flex-1">{room.description}</p>
                 
+                {/* Software Section - Only for Laboratorium Komputer in List View */}
+                {room.category === 'Laboratorium Komputer' && roomSoftwareMap[room.id] && roomSoftwareMap[room.id].length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded flex items-center">
+                            <Package className="w-3 h-3 mr-1" />
+                            {roomSoftwareMap[room.id].length} Software
+                        </span>
+                        {roomSoftwareMap[room.id].slice(0, 2).map((sw, idx) => (
+                            <span key={idx} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">
+                                {sw.name}
+                            </span>
+                        ))}
+                        {roomSoftwareMap[room.id].length > 2 && (
+                            <span className="text-xs text-gray-400 px-2 py-1">+{roomSoftwareMap[room.id].length - 2} lainnya</span>
+                        )}
+                    </div>
+                )}
+
                 <div className="flex flex-wrap gap-2 mb-4">
-                    {room.facilities.slice(0, 3).map((f, i) => (
+                    {room.facilities?.slice(0, 3).map((f, i) => (
                         <span key={i} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">{f}</span>
                     ))}
-                    {room.facilities.length > 3 && <span className="text-xs text-gray-400 px-2 py-1">+lainnya</span>}
+                    {(room.facilities?.length || 0) > 3 && <span className="text-xs text-gray-400 px-2 py-1">+lainnya</span>}
                 </div>
 
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">

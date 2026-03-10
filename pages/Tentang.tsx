@@ -220,7 +220,7 @@ const Tentang: React.FC = () => {
                   RN
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-gray-900 dark:text-white">Naufal Caesaro Premana</h4>
+                  <h4 className="font-bold text-gray-900 dark:text-white">Nauval Caesaro Premana</h4>
                   <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Backend Developer & DevOps</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Laboran Mahasiswa Angkatan 2021</p>
                 </div>
@@ -240,7 +240,7 @@ const Tentang: React.FC = () => {
                     <span>GitHub</span>
                   </a>
                   <a 
-                    href="https://linkedin.com/in/naufal-caesaro-premana" 
+                    href="https://linkedin.com/in/nauvalcaesaropremana" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -249,7 +249,7 @@ const Tentang: React.FC = () => {
                     <span>LinkedIn</span>
                   </a>
                   <a 
-                    href="mailto:rizky.naufal@uksw.edu"
+                    href="mailto:nauvalpremana@gmail.com"
                     className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   >
                     <Mail className="w-4 h-4" />

@@ -361,19 +361,33 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(is_resolved);
 CREATE INDEX IF NOT EXISTS idx_error_logs_user ON error_logs(user_id);
 
+-- ==========================================
+-- MULTI-DEVICE AUTHENTICATION TABLES
+-- ==========================================
+
+-- Table to store user sessions/tokens (Extended for multi-device support)
 CREATE TABLE user_tokens (
   id SERIAL PRIMARY KEY,
   user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token TEXT NOT NULL UNIQUE,
+  device_id VARCHAR(100) NOT NULL DEFAULT gen_random_uuid(), -- Unique device identifier (can be custom string from frontend)
+  device_name VARCHAR(100), -- Friendly device name (e.g., "Laptop Kantor", "HP Android")
+  device_type VARCHAR(50), -- Device type: 'desktop', 'mobile', 'tablet'
   user_agent TEXT,
   ip_address VARCHAR(45),
+  is_remember_me BOOLEAN DEFAULT FALSE, -- TRUE if "Remember Me" was checked
+  refresh_token TEXT, -- For "Remember Me" auto-login functionality
+  refresh_token_expires_at TIMESTAMPTZ, -- Expiry for refresh token (longer than access token)
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  last_used_at TIMESTAMPTZ
+  last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  is_active BOOLEAN DEFAULT TRUE -- For revoking specific sessions
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_tokens_expires_at ON user_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_device_id ON user_tokens(device_id);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_refresh_token ON user_tokens(refresh_token);
 
 -- 14. Tabel Database Connection Config
 -- Menyimpan konfigurasi koneksi database
@@ -409,3 +423,20 @@ CREATE TABLE sso_config (
 -- Insert default SSO config
 INSERT INTO sso_config (enabled, client_id, client_secret, redirect_uri, domain) 
 VALUES (TRUE, '782934-google-client-id-sample.apps.googleusercontent.com', 'GOCSPX-sample-secret-key', 'https://silab.fti.uksw.edu/auth/google/callback', 'student.uksw.edu');
+
+-- 16. Tabel SSO Users (Pengguna Google SSO yang Diizinkan)
+-- Menyimpan data pengguna yang dapat login menggunakan Google Workspace
+CREATE TABLE sso_users (
+    id VARCHAR(50) PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    status user_status_enum DEFAULT 'Aktif',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_sso_users_updated_at BEFORE UPDATE ON sso_users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Indexing untuk SSO Users
+CREATE INDEX IF NOT EXISTS idx_sso_users_email ON sso_users(email);
+CREATE INDEX IF NOT EXISTS idx_sso_users_status ON sso_users(status);

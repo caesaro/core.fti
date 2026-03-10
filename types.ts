@@ -118,8 +118,9 @@ export interface Notification {
 
 export interface ToastMessage {
   id: string;
-  message: string;
+  message: any;
   type: 'success' | 'error' | 'info' | 'warning';
+  sticky?: boolean;
 }
 
 export interface RoomComputer {

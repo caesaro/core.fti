@@ -42,6 +42,11 @@ const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<Role>(() => (localStorage.getItem('currentRole') as Role) || ('User' as Role));
   const [userName, setUserName] = useState<string>(() => localStorage.getItem('userName') || 'User');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('isSidebarCollapsed');
+    return saved === 'true';
+  });
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('isDarkMode');
     if (saved !== null) {
@@ -117,6 +122,12 @@ const App: React.FC = () => {
     setIsDarkMode(!isDarkMode);
   };
 
+  const toggleSidebarCollapse = () => {
+    const newState = !isSidebarCollapsed;
+    setIsSidebarCollapsed(newState);
+    localStorage.setItem('isSidebarCollapsed', String(newState));
+  };
+
   const handleLogin = (role: Role) => {
     setIsLoading(true);
     setCurrentRole(role);
@@ -173,11 +184,12 @@ const App: React.FC = () => {
   };
 
   // Helper: Show Toast
-  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    const newToast: ToastMessage = {
+  const showToast = (message: string | React.ReactNode, type: 'success' | 'error' | 'info' | 'warning' = 'info', sticky: boolean = false) => {
+    const newToast: any = {
        id: Date.now().toString() + Math.random().toString(),
        message,
-       type
+       type,
+       sticky
     };
     setToasts(prev => [...prev, newToast]);
   };
@@ -309,14 +321,14 @@ const App: React.FC = () => {
           );
         case 'profile':
           return <Profile role={currentRole} />;
-        case 'settings':
+case 'settings':
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
               allowedRoles={[Role.ADMIN]} 
               onNavigate={setCurrentPage}
             >
-              <Settings showToast={showToast} />
+              <Settings showToast={showToast} onNavigate={setCurrentPage} />
             </ProtectedRoute>
           );
         case 'class-schedule':
@@ -397,6 +409,8 @@ case 'specs-management':
             setIsSidebarOpen(false);
           }}
           isOpen={isSidebarOpen}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
         />
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible print:h-auto print:block">

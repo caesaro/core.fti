@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Database, Server, Globe, Save, RefreshCw, Eye, EyeOff, CheckCircle, AlertCircle, ShieldAlert, Power, Megaphone, Download, Upload, FileText, FileWarning, ChevronDown, ChevronUp, X, Check, Filter, Trash2, AlertTriangle, Info, CheckSquare, Square } from 'lucide-react';
+import { Database, Server, Globe, Save, RefreshCw, Eye, EyeOff, CheckCircle, AlertCircle, ShieldAlert, Power, Megaphone, Download, Upload, FileText, FileWarning, ChevronDown, ChevronUp, X, Check, Filter, Trash2, AlertTriangle, Info, CheckSquare, Square, Activity, Users, Package, Calendar, HardDrive, Clock, ExternalLink, Settings as SettingsIcon } from 'lucide-react';
 import { api } from '../services/api';
 
 interface SettingsProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface ErrorLog {
@@ -31,8 +32,17 @@ interface ErrorLogStats {
   today: number;
 }
 
-const Settings: React.FC<SettingsProps> = ({ showToast }) => {
-  const [activeTab, setActiveTab] = useState<'database' | 'sso' | 'system' | 'error-log'>('database');
+interface ServerStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalRooms: number;
+  totalInventory: number;
+  totalBookings: number;
+  serverUptime: number;
+}
+
+const Settings: React.FC<SettingsProps> = ({ showToast, onNavigate }) => {
+  const [activeTab, setActiveTab] = useState<'admin' | 'sso' | 'sso-users' | 'system' | 'error-log'>('admin');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showClientSecret, setShowClientSecret] = useState(false);
@@ -44,6 +54,13 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
   });
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // SSO Users State
+  const [ssoUsers, setSsoUsers] = useState<{id: string; email: string; name: string; status: string}[]>([]);
+  const [isLoadingSsoUsers, setIsLoadingSsoUsers] = useState(false);
+  const [showSsoUserModal, setShowSsoUserModal] = useState(false);
+  const [editingSsoUser, setEditingSsoUser] = useState<{id: string; email: string; name: string; status: string} | null>(null);
+  const [ssoUserForm, setSsoUserForm] = useState({ email: '', name: '' });
   
   // Error Log State
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
@@ -67,21 +84,16 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
     offset: 0
   });
 
-  // Database State
-  const [dbConfig, setDbConfig] = useState({
-    host: '192.168.68.62',
-    port: '5432',
-    database: 'dbcorefti',
-    username: 'corefti',
-    password: 'c0r3ft1',
-  });
+  // Server Stats State
+  const [serverStats, setServerStats] = useState<ServerStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   // SSO State
   const [ssoConfig, setSsoConfig] = useState({
     enabled: true,
     clientId: '782934-google-client-id-sample.apps.googleusercontent.com',
     clientSecret: 'GOCSPX-sample-secret-key',
-    redirectUri: 'https://silab.fti.uksw.edu/auth/google/callback',
+    redirectUri: 'https://core.fti.uksw.edu/auth/google/callback',
     domain: 'student.uksw.edu',
   });
 
@@ -89,10 +101,9 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const [resMaint, resAnnounce, resDbConfig, resSsoConfig] = await Promise.all([
+        const [resMaint, resAnnounce, resSsoConfig] = await Promise.all([
           api('/api/settings/maintenance'),
           api('/api/settings/announcement'),
-          api('/api/settings/db-config'),
           api('/api/settings/sso-config')
         ]);
 
@@ -103,24 +114,13 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
            setAnnouncement(data);
         }
 
-        if (resDbConfig.ok) {
-          const dbData = await resDbConfig.json();
-          setDbConfig({
-            host: dbData.host || '192.168.68.62',
-            port: dbData.port || '5432',
-            database: dbData.database || 'dbcorefti',
-            username: dbData.username || 'corefti',
-            password: dbData.password || ''
-          });
-        }
-
         if (resSsoConfig.ok) {
           const ssoData = await resSsoConfig.json();
           setSsoConfig({
             enabled: ssoData.enabled ?? true,
             clientId: ssoData.clientId || '',
             clientSecret: ssoData.clientSecret || '',
-            redirectUri: ssoData.redirectUri || 'https://silab.fti.uksw.edu/auth/google/callback',
+            redirectUri: ssoData.redirectUri || 'https://core.fti.uksw.edu/auth/google/callback',
             domain: ssoData.domain || 'student.uksw.edu'
           });
         }
@@ -130,6 +130,44 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
     };
     fetchSettings();
   }, []);
+
+  // Fetch Server Stats
+  useEffect(() => {
+    const fetchServerStats = async () => {
+      if (activeTab !== 'admin') return;
+      
+      setIsLoadingStats(true);
+      try {
+        // Fetch various stats
+        const [usersRes, roomsRes, inventoryRes, bookingsRes] = await Promise.all([
+          api('/api/users'),
+          api('/api/rooms'),
+          api('/api/inventory'),
+          api('/api/bookings')
+        ]);
+
+        const usersData = usersRes.ok ? await usersRes.json() : [];
+        const roomsData = roomsRes.ok ? await roomsRes.json() : [];
+        const inventoryData = inventoryRes.ok ? await inventoryRes.json() : [];
+        const bookingsData = bookingsRes.ok ? await bookingsRes.json() : [];
+
+        setServerStats({
+          totalUsers: usersData.length || 0,
+          activeUsers: usersData.filter((u: any) => u.status === 'Aktif').length || 0,
+          totalRooms: roomsData.length || 0,
+          totalInventory: inventoryData.length || 0,
+          totalBookings: bookingsData.length || 0,
+          serverUptime: Date.now() // Approximate
+        });
+      } catch (err) {
+        console.error('Failed to fetch server stats:', err);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchServerStats();
+  }, [activeTab]);
 
   // Fetch Error Logs with new API
   const fetchErrorLogs = async () => {
@@ -252,47 +290,6 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
     }
   };
 
-  const handleDbSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const res = await api('/api/settings/db-config', {
-        method: 'POST',
-        data: dbConfig
-      });
-      if (res.ok) {
-        showToast('Konfigurasi Database berhasil disimpan!', 'success');
-      } else {
-        const data = await res.json();
-        showToast(data.error || 'Gagal menyimpan konfigurasi', 'error');
-      }
-    } catch (err) {
-      showToast('Gagal menyimpan konfigurasi database', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api('/api/settings/db-config/test', {
-        method: 'POST',
-        data: dbConfig
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast('Koneksi Database Berhasil!', 'success');
-      } else {
-        showToast(data.error || 'Koneksi gagal', 'error');
-      }
-    } catch (err) {
-      showToast('Koneksi gagal. Periksa kembali parameter.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleSsoSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -400,21 +397,21 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pengaturan Sistem</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Konfigurasi koneksi database dan integrasi pihak ketiga</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Konfigurasi aplikasi, integrasi, dan administrasi</p>
       </div>
 
       {/* Tabs */}
       <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
         <button
-          onClick={() => setActiveTab('database')}
+          onClick={() => setActiveTab('admin')}
           className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center ${
-            activeTab === 'database'
+            activeTab === 'admin'
               ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
         >
-          <Database className="w-4 h-4 mr-2" />
-          Database
+          <SettingsIcon className="w-4 h-4 mr-2" />
+          Admin
         </button>
         <button
           onClick={() => setActiveTab('sso')}
@@ -454,87 +451,165 @@ const Settings: React.FC<SettingsProps> = ({ showToast }) => {
         </button>
       </div>
 
-      {/* Database Tab */}
-      {activeTab === 'database' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden animate-fade-in-up">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-             <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
-                   <Server className="w-5 h-5 mr-2 text-blue-500" /> Koneksi Database
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Atur parameter koneksi ke server PostgreSQL.</p>
-             </div>
-             <div className="flex items-center text-green-600 bg-green-50 dark:bg-green-900/20 px-3 py-1 rounded-full text-xs font-medium border border-green-200 dark:border-green-800">
-                <CheckCircle className="w-3 h-3 mr-1" /> Terhubung
-             </div>
+      {/* Admin Tab */}
+      {activeTab === 'admin' && (
+        <div className="space-y-6 animate-fade-in-up">
+          {/* App Info Card */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
+                <Info className="w-5 h-5 mr-2 text-blue-500" /> Informasi Aplikasi
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                    <Database className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold text-gray-900 dark:text-white">CORE.FTI</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Campus Operational Resource Environment</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">Versi 1.0.0</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="font-medium">Institusi:</span> Fakultas Teknologi Informasi - UKSW
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                    <span className="font-medium">Database:</span> PostgreSQL (via .env)
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                    <span className="font-medium">Backend:</span> Node.js Express
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <form onSubmit={handleDbSave} className="p-6 space-y-6">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hostname / IP</label>
-                   <input 
-                      type="text" required
-                      value={dbConfig.host}
-                      onChange={e => setDbConfig({...dbConfig, host: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
-                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Pengguna</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{serverStats?.totalUsers || 0}</p>
                 </div>
+                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-2">{serverStats?.activeUsers || 0} pengguna aktif</p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Port</label>
-                   <input 
-                      type="text" required
-                      value={dbConfig.port}
-                      onChange={e => setDbConfig({...dbConfig, port: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
-                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Ruangan</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{serverStats?.totalRooms || 0}</p>
                 </div>
-                <div className="md:col-span-2">
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama Database</label>
-                   <input 
-                      type="text" required
-                      value={dbConfig.database}
-                      onChange={e => setDbConfig({...dbConfig, database: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
-                   />
+                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                  <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Laboratorium & Ruang</p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
-                   <input 
-                      type="text" required
-                      value={dbConfig.username}
-                      onChange={e => setDbConfig({...dbConfig, username: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
-                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Inventaris</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{serverStats?.totalInventory || 0}</p>
                 </div>
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                  <Package className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Barang & Equipment</p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                   <div className="relative">
-                      <input 
-                          type={showPassword ? "text" : "password"}
-                          value={dbConfig.password}
-                          onChange={e => setDbConfig({...dbConfig, password: e.target.value})}
-                          className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 font-mono pr-10"
-                      />
-                      <button 
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                   </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Peminjaman</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{serverStats?.totalBookings || 0}</p>
                 </div>
-             </div>
-             <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={handleTestConnection} disabled={isLoading} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center">
-                   {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                   Tes Koneksi
+                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                  <Activity className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Booking ruangan</p>
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
+                <ExternalLink className="w-5 h-5 mr-2 text-blue-500" /> Link Cepat
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onClick={() => onNavigate?.('users')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <Users className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Manajemen User</span>
                 </button>
-                <button type="submit" disabled={isLoading} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium shadow-md flex items-center">
-                   <Save className="w-4 h-4 mr-2" /> Simpan Pengaturan
+                <button onClick={() => onNavigate?.('rooms')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <Calendar className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Kelola Ruangan</span>
                 </button>
-             </div>
-          </form>
+                <button onClick={() => onNavigate?.('inventory')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <Package className="w-8 h-8 text-green-600 dark:text-green-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Inventaris</span>
+                </button>
+                <button onClick={() => onNavigate?.('manage-bookings')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <Activity className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Pemesanan</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* System Info */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center">
+                <HardDrive className="w-5 h-5 mr-2 text-blue-500" /> Informasi Sistem
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Status Server</span>
+                  <span className="flex items-center text-sm font-medium text-green-600">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                    Online
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Database</span>
+                  <span className="flex items-center text-sm font-medium text-green-600">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                    Terhubung
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Konfigurasi DB</span>
+                  <span className="text-sm font-medium text-blue-600">
+                    .env file
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">API Endpoint</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    http://localhost:5000
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

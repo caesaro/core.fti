@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, ArrowLeft, Eye, EyeOff, Loader2, Moon, Sun, Check } from 'lucide-react';
+import { Mail, Lock, User, ArrowLeft, Eye, EyeOff, Loader2, Moon, Sun, Check, RefreshCw } from 'lucide-react';
 import { Role } from '../types';
 import fti from "../src/assets/fti.jpg";
-import nocLogo from "../src/assets/noc.png";
+import nocLogo from "../src/assets/NOC.svg";
 import { api } from '../services/api';
 
 interface LoginProps {
   onLogin: (role: Role) => void;
-  showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+  showToast: (message: string | React.ReactNode, type: 'success' | 'error' | 'info' | 'warning', sticky?: boolean) => void;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
 }
@@ -18,7 +18,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
   const [view, setView] = useState<ViewState>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(true);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -30,12 +32,45 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     nim: ''
   });
 
+  // CAPTCHA State
+  const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: 0 });
+  const [captchaInput, setCaptchaInput] = useState('');
+
+  const generateCaptcha = () => {
+    const num1 = Math.floor(Math.random() * 10);
+    const num2 = Math.floor(Math.random() * 10);
+    setCaptcha({ num1, num2, answer: num1 + num2 });
+    setCaptchaInput('');
+  };
+
+  useEffect(() => {
+    if (view === 'forgot-password') {
+      generateCaptcha();
+    }
+  }, [view]);
+
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedEmail');
     if (savedEmail) {
       setFormData(prev => ({ ...prev, email: savedEmail }));
       setRememberMe(true);
     }
+  }, []);
+
+  // Fetch SSO config on mount
+  useEffect(() => {
+    const fetchSsoConfig = async () => {
+      try {
+        const res = await api('/api/settings/sso-config');
+        if (res.ok) {
+          const data = await res.json();
+          setSsoEnabled(data.enabled ?? true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch SSO config:', err);
+      }
+    };
+    fetchSsoConfig();
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,12 +103,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     setIsLoading(true);
     
     try {
+      // Get stored deviceId or generate new one
+      let deviceId = localStorage.getItem('deviceId');
+      if (!deviceId) {
+        // Generate a simple device ID based on browser fingerprint
+        deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('deviceId', deviceId);
+      }
+
       // Menggunakan wrapper 'api' (Header & URL otomatis dihandle)
       const response = await api('/api/login', {
         method: 'POST',
         data: {
           email: formData.email,
-          password: formData.password || '' // Kirim string kosong jika user tidak isi password
+          password: formData.password || '', // Kirim string kosong jika user tidak isi password
+          rememberMe: rememberMe,
+          deviceId: deviceId
         }
       });
 
@@ -93,12 +138,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
         localStorage.setItem('authToken', data.token); // Simpan token
         localStorage.setItem('userId', data.id);
         localStorage.setItem('userName', data.name);
+        
+        // Store device ID from response
+        if (data.deviceId) {
+          localStorage.setItem('deviceId', data.deviceId);
+        }
 
-        // Handle "Remember Me"
-        if (rememberMe) {
+        // Handle "Remember Me" - Store refresh token if provided
+        if (rememberMe && data.isRememberMe) {
           localStorage.setItem('rememberedEmail', formData.email);
+          // In production, consider encrypting this
+          if (data.refreshToken) {
+            sessionStorage.setItem('refreshToken', data.refreshToken);
+          }
         } else {
           localStorage.removeItem('rememberedEmail');
+          sessionStorage.removeItem('refreshToken');
         }
         
         if (data.profileIncomplete) {
@@ -167,20 +222,51 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (parseInt(captchaInput) !== captcha.answer) {
+      showToast('Verifikasi keamanan salah. Silakan coba lagi.', 'error');
+      generateCaptcha();
+      return;
+    }
+
     if (!formData.email) {
       showToast('Mohon masukkan alamat email anda.', 'warning');
       return;
     }
 
+    if (!formData.email.includes('@')) {
+      showToast('Mohon masukkan alamat email yang valid.', 'warning');
+      return;
+    }
+
     setIsLoading(true);
-    // Simulate Reset Link
-    setTimeout(() => {
+    try {
+      const response = await api('/api/check-user-exists', {
+        method: 'POST',
+        data: { identifier: formData.email }
+      });
+      const data = await response.json();
+
+      if (data.exists) {
+        // Tampilkan pesan instruksi hubungi admin jika user ditemukan
+        showToast(
+          <span>
+            Halo <b>{data.name}</b>. Silakan hubungi Admin (<a href="mailto:fti.laboran@adm.uksw.edu" className="underline font-bold hover:text-blue-600 dark:hover:text-blue-400">fti.laboran@adm.uksw.edu</a>) untuk reset password.
+          </span>, 
+          'info',
+          true
+        );
+        setView('login');
+      } else {
+        showToast('Email atau Username tidak terdaftar dalam sistem.', 'error');
+      }
+    } catch (error) {
+      showToast('Gagal memverifikasi data.', 'error');
+    } finally {
       setIsLoading(false);
-      showToast(`Link reset password telah dikirim ke ${formData.email}`, 'info');
-      setView('login');
-    }, 1500);
+    }
   };
 
   const handleSetNewPassword = async (e: React.FormEvent) => {
@@ -350,6 +436,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
               </form>
 
               <div className="mt-6">
+                {ssoEnabled && (
+                <>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
@@ -373,6 +461,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                     Google Workspace
                   </button>
                 </div>
+                </>
+                )}
               </div>
 
               <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
@@ -410,7 +500,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                    <input name="nim" type="text" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="682026xxx" />
                 </div>
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email UKSW</label>
+                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                    <input name="email" type="email" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="nim@student.uksw.edu" />
                 </div>
                 <div>
@@ -420,7 +510,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                     <input name="password" type="password" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
+                     <div className="relative">
+                        <input name="password" type={showPassword ? "text" : "password"} required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm pr-10" placeholder="••••••••" />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                     </div>
                      {formData.password && (
                         <div className="mt-1 text-xs text-right">
                            Strength: <span className={`font-bold ${getPasswordStrength(formData.password).color}`}>{getPasswordStrength(formData.password).label}</span>
@@ -429,14 +528,26 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                    </div>
                    <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Konfirmasi</label>
-                     <input name="confirmPassword" type="password" required onChange={handleChange} className="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="••••••••" />
+                     <div className="relative">
+                        <input name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required onChange={handleChange} className={`block w-full px-3 py-2.5 border ${formData.confirmPassword && formData.password !== formData.confirmPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500'} rounded-lg dark:bg-gray-700 dark:text-white sm:text-sm pr-10`} placeholder="••••••••" />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                     </div>
+                     {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                        <p className="mt-1 text-xs text-red-500">Password tidak cocok</p>
+                     )}
                    </div>
                 </div>
                 
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 mt-4 transition-colors"
+                  disabled={isLoading || formData.password !== formData.confirmPassword}
+                  className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed mt-4 transition-colors"
                 >
                   {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Daftar Sekarang'}
                 </button>
@@ -457,13 +568,33 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
 
               <form onSubmit={handleForgotPassword} className="space-y-6">
                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Terdaftar</label>
+                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                    <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                          <Mail className="h-5 w-5 text-gray-400" />
                       </div>
-                      <input name="email" type="email" required onChange={handleChange} className="block w-full pl-10 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="nama@uksw.edu" />
+                      <input name="email" type="text" required onChange={handleChange} className="block w-full pl-10 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" placeholder="nama@uksw.edu" />
                    </div>
+                </div>
+
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Verifikasi Keamanan</label>
+                   <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0 bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 font-mono text-lg font-bold tracking-widest select-none text-gray-800 dark:text-gray-200">
+                         {captcha.num1} + {captcha.num2} = ?
+                      </div>
+                      <button type="button" onClick={generateCaptcha} className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors" title="Refresh CAPTCHA">
+                         <RefreshCw className="w-5 h-5" />
+                      </button>
+                   </div>
+                   <input 
+                      type="number" 
+                      required 
+                      value={captchaInput} 
+                      onChange={(e) => setCaptchaInput(e.target.value)} 
+                      className="mt-2 block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm" 
+                      placeholder="Hasil penjumlahan" 
+                   />
                 </div>
 
                 <button
@@ -471,7 +602,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, showToast, isDarkMode, toggleDar
                   disabled={isLoading}
                   className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-colors"
                 >
-                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Kirim Link Reset'}
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Cek Akun'}
                 </button>
               </form>
              </div>

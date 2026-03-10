@@ -23,12 +23,34 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+  const isActiveRef = useRef(false); // Track if scanner is active
+  const isProcessingRef = useRef(false); // Track if a scan is being processed
+
+  // Reset refs when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      isActiveRef.current = false;
+      isProcessingRef.current = false;
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            scannerRef.current.stop().catch(() => { });
+          }
+          scannerRef.current.clear();
+        } catch (e) { /* ignore */ }
+        scannerRef.current = null;
+      }
+    }
+  }, [isOpen]);
 
   useEffect(() => {
+    let mounted = true;
+    let scannerInstance: Html5Qrcode | null = null;
+
     if (isOpen) {
       Html5Qrcode.getCameras()
         .then((devices) => {
-          if (devices && devices.length > 0) {
+          if (devices && devices.length > 0 && mounted) {
             setCameras(devices);
             const backCam = devices.find(d =>
               d.label.toLowerCase().includes('back') ||
@@ -44,18 +66,37 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
     }
 
     return () => {
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          scannerRef.current.stop().catch(() => { });
+      mounted = false;
+      // Cleanup scanner on unmount
+      if (scannerInstance) {
+        try {
+          if (scannerInstance.isScanning) {
+            scannerInstance.stop().catch(() => { });
+          }
+          scannerInstance.clear();
+        } catch (e) {
+          console.warn("Error cleaning up scanner:", e);
         }
-        scannerRef.current.clear();
-        scannerRef.current = null;
+        scannerInstance = null;
       }
     };
   }, [isOpen]);
 
   const handleStartScan = async () => {
     if (!selectedCameraId) return;
+    
+    // Mark as active
+    isActiveRef.current = true;
+
+    // Prevent multiple scanner instances - stop existing one first
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        scannerRef.current.clear();
+      } catch (e) { /* ignore cleanup errors */ }
+    }
 
     const html5QrCode = new Html5Qrcode("qr-reader");
     scannerRef.current = html5QrCode;
@@ -64,13 +105,30 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
       await html5QrCode.start(
         selectedCameraId,
         { fps: 10, qrbox: 250, aspectRatio: 1.0 },
-        (decodedText) => {
+        async (decodedText) => {
+          // Prevent callbacks if not active
+          if (!isActiveRef.current) return;
+          
           const now = Date.now();
           // Prevent duplicate scans within 2 seconds
           if (decodedText === lastScanRef.current.code && now - lastScanRef.current.time < 2000) return;
+          
           lastScanRef.current = { code: decodedText, time: now };
+          
+          // Stop scanner completely before calling callback
+          isActiveRef.current = false; // Prevent further callbacks
+          try {
+            if (html5QrCode.isScanning) {
+              await html5QrCode.stop();
+            }
+            html5QrCode.clear();
+          } catch (e) { /* ignore stop errors */ }
+          setIsScanning(false);
+          setTorchOn(false);
+          setTorchSupported(false);
+          
+          // Now call the success callback
           onScanSuccess(decodedText);
-          handleStopScan();
         },
         () => { }
       );
@@ -84,16 +142,22 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
       } catch (e) { }
     } catch (err) {
       console.error("Error starting scanner:", err);
+      isActiveRef.current = false;
     }
   };
 
   const handleStopScan = async () => {
     if (scannerRef.current && isScanning) {
-      await scannerRef.current.stop();
-      setIsScanning(false);
-      setTorchOn(false);
-      setTorchSupported(false);
+      try {
+        await scannerRef.current.stop();
+      } catch (e) { /* ignore stop errors */ }
+      try {
+        scannerRef.current.clear();
+      } catch (e) { /* ignore clear errors */ }
     }
+    setIsScanning(false);
+    setTorchOn(false);
+    setTorchSupported(false);
   };
 
   const toggleTorch = async () => {
@@ -109,8 +173,15 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
   };
 
   const handleClose = async () => {
+    isActiveRef.current = false;
+    isProcessingRef.current = false;
     if (scannerRef.current && isScanning) {
-      try { await scannerRef.current.stop(); } catch (e) { }
+      try { 
+        await scannerRef.current.stop();
+      } catch (e) { }
+      try {
+        scannerRef.current.clear();
+      } catch (e) { }
     }
     setIsScanning(false);
     onClose();

@@ -1,7 +1,7 @@
 // Page: Loans (Peminjaman Barang)
 import React, { useState, useEffect } from 'react';
 import { Role, Loan, Equipment } from '../types';
-import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode } from 'lucide-react';
+import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin } from 'lucide-react';
 import { api } from '../services/api';
 import QRScannerModal from '../components/QRScannerModal';
 
@@ -13,6 +13,7 @@ interface LoansProps {
 const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [activeStaff, setActiveStaff] = useState<{id: string, nama: string}[]>([]);
   const [filter, setFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -119,6 +120,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
   // Fetch data on mount
   useEffect(() => {
     fetchData();
+    fetchStaff();
   }, []);
 
   const fetchData = async () => {
@@ -128,7 +130,24 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
         api('/api/inventory')
       ]);
       if (loansRes.ok) setLoans(await loansRes.json());
-      if (eqRes.ok) setEquipment(await eqRes.json());
+      if (eqRes.ok) {
+        const equipmentData: Equipment[] = await eqRes.json();
+        setEquipment(equipmentData);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchStaff = async () => {
+    try {
+      const staffRes = await api('/api/staff');
+      if (staffRes.ok) {
+        const staffData = await staffRes.json();
+        // Filter only active staff (status = 'Aktif')
+        const activeStaffData = staffData
+          .filter((staff: any) => staff.status === 'Aktif')
+          .map((staff: any) => ({ id: staff.id, nama: staff.nama }));
+        setActiveStaff(activeStaffData);
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -213,7 +232,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
     
     const selectedIds = formData.equipmentIds.filter(id => id !== '');
 
-    if (selectedIds.length === 0 || !formData.borrowerName || !formData.borrowDate || !formData.borrowTime || !formData.borrowOfficer) {
+    if (selectedIds.length === 0 || !formData.borrowerName || !formData.borrowDate || !formData.borrowTime || !formData.borrowOfficer || !formData.location) {
       showToast("Mohon lengkapi data peminjaman.", "error");
       return;
     }
@@ -474,21 +493,26 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Petugas Peminjaman</label>
-                  <input 
-                    type="text" required
+                  <select 
+                    required
                     value={formData.borrowOfficer}
                     onChange={(e) => setFormData({...formData, borrowOfficer: e.target.value})}
-                    placeholder="Nama Petugas"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">-- Pilih Petugas --</option>
+                    {activeStaff.map(staff => (
+                      <option key={staff.id} value={staff.nama}>{staff.nama}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Peminjaman</label>
                   <input 
-                    type="text" 
+                    type="text"
+                    required
                     value={formData.location}
                     onChange={(e) => setFormData({...formData, location: e.target.value})}
-                    placeholder="Contoh: Ruang 301, Lab Jaringan"
+                    placeholder="Contoh: Ruang Kelas / Luar Kampus"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -604,6 +628,11 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                   <p className="text-sm text-gray-500 dark:text-gray-400">Peminjam</p>
                   <p className="text-lg font-bold text-gray-900 dark:text-white">{selectedGroup.loans[0].borrowerName}</p>
                   <p className="text-xs text-gray-500 mt-1">Jaminan: {selectedGroup.loans[0].guarantee}</p>
+                  {selectedGroup.loans[0].location && (
+                    <p className="text-xs text-gray-500 mt-1 flex items-center">
+                      <MapPin className="w-3 h-3 mr-1" /> Lokasi: {selectedGroup.loans[0].location}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-500 dark:text-gray-400">Waktu Pinjam</p>
@@ -713,13 +742,17 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Petugas Pengembalian</label>
-                  <input 
-                    type="text" required
+                  <select 
+                    required
                     value={returnConfirmation.returnOfficer}
                     onChange={e => setReturnConfirmation({...returnConfirmation, returnOfficer: e.target.value})}
-                    placeholder="Nama Petugas"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">-- Pilih Petugas --</option>
+                    {activeStaff.map(staff => (
+                      <option key={staff.id} value={staff.nama}>{staff.nama}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -746,4 +779,3 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
 };
 
 export default PeminjamanBarang;
-

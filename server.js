@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import ExcelJS from 'exceljs';
+import crypto from 'crypto';
 
 const { Pool } = pg;
 const app = express();
@@ -29,6 +30,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
+  'https://192.168.68.197:5173',
+  'http://192.168.68.197:5173',
+  'https://localhost:5173',
+  'https://localhost:3000',
 ]; // Tambahkan URL frontend production Anda di sini
 
 app.use(cors({
@@ -57,8 +62,8 @@ const validateDbConfig = () => {
   const missing = requiredVars.filter(v => !process.env[v]);
   
   if (missing.length > 0) {
-    console.error(`❌ Error: Variabel lingkungan database berikut belum diset: ${missing.join(', ')}`);
-    console.error('💡 Silakan pastikan file .env sudah dikonfigurasi dengan benar.');
+    console.error(`âŒ Error: Variabel lingkungan database berikut belum diset: ${missing.join(', ')}`);
+    console.error('ðŸ’¡ Silakan pastikan file .env sudah dikonfigurasi dengan benar.');
     process.exit(1);
   }
 };
@@ -82,7 +87,7 @@ const dbConfig = {
 };
 
 // Logging konfigurasi database (dengan password tersembunyi)
-console.log('🔄 Menghubungkan ke database...');
+console.log('ðŸ”„ Menghubungkan ke database...');
 console.log(`   Host: ${dbConfig.host}:${dbConfig.port}`);
 console.log(`   Database: ${dbConfig.database}`);
 console.log(`   User: ${dbConfig.user}`);
@@ -93,10 +98,10 @@ const pool = new Pool(dbConfig);
 // Test koneksi database saat startup
 pool.query('SELECT NOW()')
   .then(() => {
-    console.log('✅ Berhasil terhubung ke database PostgreSQL');
+    console.log('âœ… Berhasil terhubung ke database PostgreSQL');
   })
   .catch((err) => {
-    console.error('❌ Gagal terhubung ke database:', err.message);
+    console.error('âŒ Gagal terhubung ke database:', err.message);
     process.exit(1);
   });
 
@@ -145,9 +150,10 @@ createIndexes();
 
 // --- 4. Rate Limiting ---
 // Mencegah serangan brute-force dengan membatasi jumlah request dari satu IP
+// Ditingkatkan limitnya untuk mengakomodasi multiple device scenario
 const apiLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 menit
-	max: 100, // Batasi setiap IP hingga 100 request per window
+	max: 200, // Ditingkatkan dari 100 ke 200 untuk mengakomodasi lebih banyak request
 	standardHeaders: true, 
 	legacyHeaders: false, 
   message: { error: 'Terlalu banyak request, silakan coba lagi setelah 15 menit.' }
@@ -164,11 +170,12 @@ const verifyRole = (allowedRoles) => (req, res, next) => {
   next();
 };
 
-// --- MIDDLEWARE: Verifikasi Token JWT ---
+// --- MIDDLEWARE: Verifikasi Token JWT (Stateless - tidak perlu DB check) ---
 const verifyToken = (req, res, next) => {
   // Path di sini tidak perlu '/api' karena middleware ini sudah di-mount pada '/api'.
   // req.path akan menjadi '/login', bukan '/api/login'.
-  const publicPaths = ['/login', '/register', '/set-password', '/settings/maintenance', '/logout'];
+  // Updated public paths to include sso-config (used on login page)
+  const publicPaths = ['/login', '/register', '/set-password', '/settings/maintenance', '/logout', '/settings/sso-config'];
   if (publicPaths.some(path => req.path.startsWith(path)) || req.path === '/') {
     return next();
   }
@@ -180,25 +187,14 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ error: 'Akses ditolak. Token tidak disediakan.' });
   }
 
+  // Verify JWT token (stateless - no database check needed)
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token tidak valid atau kadaluarsa.' });
     }
-
-    // **[MODIFIKASI]** Verifikasi token ke database
-    pool.query('SELECT * FROM user_tokens WHERE token = $1 AND expires_at > NOW()', [token])
-      .then(result => {
-        if (result.rows.length === 0) {
-          return res.status(401).json({ error: 'Sesi tidak valid atau telah logout.' });
-        }
-        // Tambahkan payload user dari token ke object request
-        req.user = user;
-        next();
-      })
-      .catch(dbErr => {
-        console.error('DB error during token verification:', dbErr);
-        return res.status(500).json({ error: 'Kesalahan server saat verifikasi sesi.' });
-      });
+    // Add user payload to request object
+    req.user = user;
+    next();
   });
 };
 
@@ -332,7 +328,34 @@ app.get('/api/users/:id/account-info', verifyRole(['Admin', 'Laboran', 'User']),
   }
 });
 
-// Endpoint Login
+// Helper function to generate device name from user agent
+const getDeviceInfo = (userAgent) => {
+  if (!userAgent) return { deviceName: 'Unknown Device', deviceType: 'desktop' };
+  
+  const ua = userAgent.toLowerCase();
+  let deviceName = 'Unknown Device';
+  let deviceType = 'desktop';
+  
+  if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
+    deviceType = 'mobile';
+    if (ua.includes('android')) deviceName = 'Android Phone';
+    else if (ua.includes('iphone')) deviceName = 'iPhone';
+    else deviceName = 'Mobile Device';
+  } else if (ua.includes('tablet') || ua.includes('ipad')) {
+    deviceType = 'tablet';
+    deviceName = 'Tablet';
+  } else if (ua.includes('mac')) {
+    deviceName = 'Mac';
+  } else if (ua.includes('windows')) {
+    deviceName = 'Windows PC';
+  } else if (ua.includes('linux')) {
+    deviceName = 'Linux PC';
+  }
+  
+  return { deviceName, deviceType };
+};
+
+// Endpoint Login (Simplified - No token storage in DB)
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -364,7 +387,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     if (user) {
-      // **[MODIFIKASI]** Update last_login on each login
+      // Update last_login on each login
       await pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
 
       // Cek Status Akun (Hanya 'Aktif' yang boleh login)
@@ -373,28 +396,31 @@ app.post('/api/login', async (req, res) => {
       }
 
       // Cek kelengkapan profil (Opsional)
-      // Dianggap tidak lengkap jika No HP kosong
       const isProfileIncomplete = !user.telepon;
 
-      // Buat JWT Token
-      const tokenPayload = { id: user.id, role: user.role };
-      const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '8h' }); // Token berlaku 8 jam
-      const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 jam dari sekarang
+      // Tentukan expiration token (8 jam untuk regular, 30 hari untuk remember me)
+      // Kita tetap perlu rememberMe dari frontend untuk menentukan expiry
+      const isRememberMe = req.body.rememberMe === true;
+      const tokenExpiryHours = isRememberMe ? 30 * 24 : 8;
 
-      // **[MODIFIKASI]** Simpan token ke database
-      await pool.query(
-        `INSERT INTO user_tokens (user_id, token, expires_at, ip_address, user_agent) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [user.id, token, expiresAt, req.ip, req.headers['user-agent']]
-      );
+      // Buat JWT Token (tanpa simpan ke database)
+      const tokenPayload = { 
+        id: user.id, 
+        role: user.role,
+        jti: crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex')
+      };
+      const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: `${tokenExpiryHours}h` });
+      const expiresAt = new Date(Date.now() + tokenExpiryHours * 60 * 60 * 1000);
 
       res.json({ 
         success: true, 
-        token, // Kirim token ke frontend
+        token,
         id: user.id, 
         role: user.role, 
         name: user.nama, 
-        profileIncomplete: isProfileIncomplete 
+        profileIncomplete: isProfileIncomplete,
+        isRememberMe: isRememberMe,
+        expiresAt: expiresAt.toISOString()
       });
     } else {
       res.status(401).json({ error: 'Password salah.' });
@@ -405,20 +431,179 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// **[BARU]** Endpoint Logout
-app.post('/api/logout', async (req, res) => {
+// **[BARU]** Endpoint Refresh Token (for Remember Me auto-login)
+app.post('/api/auth/refresh', async (req, res) => {
+  const { refreshToken, deviceId } = req.body;
+
+  if (!refreshToken || !deviceId) {
+    return res.status(400).json({ error: 'Refresh token dan device ID diperlukan.' });
+  }
+
+  try {
+    // Find the session with this refresh token and device ID
+    const result = await pool.query(
+      `SELECT ut.*, u.role, u.nama, u.status 
+       FROM user_tokens ut 
+       JOIN users u ON ut.user_id = u.id 
+       WHERE ut.refresh_token = $1 AND ut.device_id = $2 AND ut.is_active = TRUE`,
+
+       [refreshToken, deviceId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Sesi tidak valid atau telah kadaluarsa.' });
+    }
+
+    const session = result.rows[0];
+
+    // Check if refresh token is still valid
+    if (session.refresh_token_expires_at && new Date(session.refresh_token_expires_at) < new Date()) {
+      return res.status(401).json({ error: 'Sesi telah kadaluarsa. Silakan login kembali.' });
+    }
+
+    // Check if user is still active
+    if (session.status !== 'Aktif') {
+      return res.status(403).json({ error: 'Akun sudah tidak aktif.' });
+    }
+
+    // Generate new access token
+    const tokenPayload = { 
+      id: session.user_id, 
+      role: session.role,
+      jti: crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex')
+    };
+    const newToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '8h' });
+    const newExpiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+
+    // Update token in database
+    await pool.query(
+      'UPDATE user_tokens SET token = $1, expires_at = $2, last_used_at = NOW() WHERE id = $3',
+      [newToken, newExpiresAt, session.id]
+    );
+
+    res.json({
+      success: true,
+      token: newToken,
+      expiresAt: newExpiresAt.toISOString()
+    });
+  } catch (err) {
+    console.error('Token refresh error:', err);
+    res.status(500).json({ error: 'Gagal memperbarui sesi.' });
+  }
+});
+
+// **[BARU]** Endpoint Get User Sessions (List all active sessions)
+app.get('/api/auth/sessions', async (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  if (token) {
-    try {
-      // Hapus token dari database
-      await pool.query('DELETE FROM user_tokens WHERE token = $1', [token]);
-    } catch (err) {
-      console.error('Logout error, failed to delete token:', err);
-      // Jangan kirim error ke user, logout tetap harus berhasil di client
-    }
+  if (!token) {
+    return res.status(401).json({ error: 'Token tidak disediakan.' });
   }
+
+  try {
+    // Verify token and get user
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Get all active sessions for this user
+    const result = await pool.query(
+      `SELECT id, device_id, device_name, device_type, ip_address, user_agent, is_remember_me, created_at, last_used_at, expires_at
+       FROM user_tokens 
+       WHERE user_id = $1 AND is_active = TRUE
+       ORDER BY last_used_at DESC`,
+      [decoded.id]
+    );
+
+    const sessions = result.rows.map(row => ({
+      id: row.id,
+      deviceId: row.device_id,
+      deviceName: row.device_name,
+      deviceType: row.device_type,
+      ipAddress: row.ip_address,
+      isRememberMe: row.is_remember_me,
+      createdAt: row.created_at,
+      lastUsedAt: row.last_used_at,
+      expiresAt: row.expires_at,
+      isCurrentSession: row.token === token // Mark the current session
+    }));
+
+    res.json({ sessions });
+  } catch (err) {
+    console.error('Get sessions error:', err);
+    res.status(500).json({ error: 'Gagal mengambil data sesi.' });
+  }
+});
+
+// **[BARU]** Endpoint Revoke Specific Session
+app.delete('/api/auth/sessions/:deviceId', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  const { deviceId } = req.params;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token tidak disediakan.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Check if trying to revoke own session
+    const sessionResult = await pool.query(
+      'SELECT token FROM user_tokens WHERE device_id = $1 AND user_id = $2 AND is_active = TRUE',
+      [deviceId, decoded.id]
+    );
+
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Sesi tidak ditemukan.' });
+    }
+
+    // If trying to revoke current session, deny (user should use logout)
+    if (sessionResult.rows[0].token === token) {
+      return res.status(400).json({ error: 'Gunakan logout untuk mengakhiri sesi saat ini.' });
+    }
+
+    // Revoke the session
+    await pool.query(
+      'UPDATE user_tokens SET is_active = FALSE WHERE device_id = $1 AND user_id = $2',
+      [deviceId, decoded.id]
+    );
+
+    res.json({ success: true, message: 'Sesi berhasil dicabut.' });
+  } catch (err) {
+    console.error('Revoke session error:', err);
+    res.status(500).json({ error: 'Gagal mencabut sesi.' });
+  }
+});
+
+// **[BARU]** Endpoint Logout from All Devices
+app.post('/api/auth/logout-all', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token tidak disediakan.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Revoke all sessions except current one
+    await pool.query(
+      'UPDATE user_tokens SET is_active = FALSE WHERE user_id = $1 AND token != $2',
+      [decoded.id, token]
+    );
+
+    res.json({ success: true, message: 'Semua sesi lain telah diakhiri.' });
+  } catch (err) {
+    console.error('Logout all error:', err);
+    res.status(500).json({ error: 'Gagal mengakhiri semua sesi.' });
+  }
+});
+
+// Endpoint Logout (Simplified - stateless, no DB operations needed)
+app.post('/api/logout', async (req, res) => {
+  // Since we're using stateless JWT, we just return success
+  // The client should discard the token locally
   res.json({ success: true, message: 'Logout berhasil.' });
 });
 
@@ -437,6 +622,22 @@ app.post('/api/set-password', async (req, res) => {
   } catch (err) {
     console.error('Set password error:', err);
     res.status(500).json({ error: 'Gagal memperbarui password.' });
+  }
+});
+
+// Endpoint Check User Existence (Untuk Lupa Password)
+app.post('/api/check-user-exists', async (req, res) => {
+  const { identifier } = req.body;
+  try {
+    const result = await pool.query('SELECT id, nama FROM users WHERE email = $1 OR username = $1', [identifier]);
+    if (result.rows.length > 0) {
+      res.json({ exists: true, name: result.rows[0].nama });
+    } else {
+      res.json({ exists: false });
+    }
+  } catch (err) {
+    console.error('Check user exists error:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 });
 
@@ -1487,11 +1688,12 @@ app.put('/api/bookings/:id/status', async (req, res) => {
     const { status, techSupportPic, techSupportNeeds, rejectionReason } = req.body;
     try {
         // Frontend mengirim 'APPROVED' atau 'REJECTED', kita konversi ke nilai ENUM di DB
-        if (status === 'APPROVED') {
+        // FIX: Cek juga value enum ('Disetujui'/'Ditolak') karena frontend mengirim value tersebut
+        if (status === 'APPROVED' || status === 'Disetujui') {
              // Update status beserta data technical support
              await pool.query('UPDATE bookings SET status=$1, tech_support_pic=$2, tech_support_needs=$3, rejection_reason=NULL WHERE id=$4', 
                 ['Disetujui', techSupportPic, techSupportNeeds, req.params.id]);
-        } else if (status === 'REJECTED') {
+        } else if (status === 'REJECTED' || status === 'Ditolak') {
              await pool.query('UPDATE bookings SET status=$1, rejection_reason=$2 WHERE id=$3', 
                 ['Ditolak', rejectionReason, req.params.id]);
         } else {
@@ -1509,11 +1711,11 @@ app.put('/api/bookings/:id/status', async (req, res) => {
             let message = '';
             let type = 'info';
 
-            if (status === 'APPROVED') { // Notifikasi tetap berdasarkan input dari frontend
+            if (status === 'APPROVED' || status === 'Disetujui') { 
                 title = 'Peminjaman Disetujui';
                 message = `Pengajuan "${keperluan}" telah disetujui.`;
                 type = 'success';
-            } else if (status === 'REJECTED') {
+            } else if (status === 'REJECTED' || status === 'Ditolak') {
                 title = 'Peminjaman Ditolak';
                 message = `Pengajuan "${keperluan}" ditolak.${rejectionReason ? ' Alasan: ' + rejectionReason : ''}`;
                 type = 'error';
@@ -1612,6 +1814,30 @@ app.get('/api/bookings/export', async (req, res) => {
     } catch (err) {
         console.error('Export error:', err);
         res.status(500).json({ error: 'Gagal export excel' });
+    }
+});
+
+// DELETE Booking (Hapus permanen dari database)
+app.delete('/api/bookings/:id', async (req, res) => {
+    const { id } = req.params;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Hapus terlebih dahulu dari booking_schedules (child table)
+        await client.query('DELETE FROM booking_schedules WHERE booking_id = $1', [id]);
+        
+        // 2. Hapus dari bookings (parent table)
+        await client.query('DELETE FROM bookings WHERE id = $1', [id]);
+        
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Booking berhasil dihapus dari database.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Delete booking error:', err);
+        res.status(500).json({ error: 'Gagal menghapus booking.' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1906,43 +2132,52 @@ app.post('/api/settings/announcement', async (req, res) => {
   }
 });
 
-// Endpoint Backup Database (Download SQL Dump)
-app.get('/api/settings/backup', (req, res) => {
+// Endpoint Backup Database using pg_dump
+app.get('/api/settings/backup', async (req, res) => {
   const date = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `backup-corefti-${date}.sql`;
+const filename = `backup-corefti-${date}.sql`;
 
   // Set Header agar browser mengenali ini sebagai file download
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'application/sql');
 
-  // Siapkan Environment Variables untuk pg_dump
-  const env = {
-    ...process.env,
-    PGHOST: process.env.DB_HOST,
-    PGPORT: process.env.DB_PORT,
-    PGUSER: process.env.DB_USER,
-    PGPASSWORD: process.env.DB_PASSWORD,
-    PGDATABASE: process.env.DB_NAME,
-  };
+  try {
+    // Menggunakan pg_dump native via child_process
+    // Pastikan pg_dump terinstall di server (apt install postgresql-client)
+    const env = { ...process.env, PGPASSWORD: dbConfig.password };
+    
+    const dump = spawn('pg_dump', [
+      '-h', dbConfig.host,
+      '-p', String(dbConfig.port),
+      '-U', dbConfig.user,
+      '--clean',      // Tambahkan perintah DROP TABLE sebelum CREATE
+      '--if-exists',  // Tambahkan IF EXISTS pada perintah DROP
+      '--no-owner',   // Skip ownership commands
+      '--no-acl',     // Skip privileges
+      dbConfig.database
+    ], { env });
 
-  // Jalankan pg_dump dan pipe outputnya langsung ke response
-  const dump = spawn('pg_dump', [], { env });
+    // Pipe output langsung ke response stream
+    dump.stdout.pipe(res);
 
-  dump.stdout.pipe(res);
+    dump.stderr.on('data', (data) => {
+      console.error(`pg_dump error: ${data}`);
+    });
 
-  dump.stderr.on('data', (data) => {
-    console.error(`pg_dump error: ${data}`);
-  });
-
-  dump.on('error', (err) => {
-    console.error('Failed to start pg_dump:', err);
+    dump.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`pg_dump process exited with code ${code}`);
+      }
+    });
+  } catch (error) {
+    console.error('Backup error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Gagal menjalankan backup. Pastikan pg_dump terinstall di server.' });
+      res.status(500).json({ error: 'Gagal melakukan backup database: ' + error.message });
     }
-  });
+  }
 });
 
-// Endpoint Restore Database (Upload SQL File)
+// Endpoint Restore Database (Upload SQL File) - Native psql implementation
 app.post('/api/settings/restore', upload.single('backupFile'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Tidak ada file yang diupload.' });
@@ -1950,46 +2185,39 @@ app.post('/api/settings/restore', upload.single('backupFile'), async (req, res) 
 
   const filePath = req.file.path;
 
-  // Siapkan Environment Variables untuk psql
-  const env = {
-    ...process.env,
-    PGHOST: process.env.DB_HOST,
-    PGPORT: process.env.DB_PORT,
-    PGUSER: process.env.DB_USER,
-    PGPASSWORD: process.env.DB_PASSWORD,
-    PGDATABASE: process.env.DB_NAME,
-  };
+  try {
+    // Menggunakan psql native via child_process untuk restore
+    const env = { ...process.env, PGPASSWORD: dbConfig.password };
+    
+    const psql = spawn('psql', [
+      '-h', dbConfig.host,
+      '-p', String(dbConfig.port),
+      '-U', dbConfig.user,
+      '-d', dbConfig.database,
+      '-f', filePath
+    ], { env });
 
-  // Jalankan psql untuk restore
-  // Command: psql -U user -d dbname -f file.sql
-  const psql = spawn('psql', ['-f', filePath], { env });
+    let errorLog = '';
+    psql.stderr.on('data', (data) => {
+      errorLog += data.toString();
+    });
 
-  psql.on('error', (err) => {
-    console.error('Failed to start psql:', err);
+    psql.on('close', (code) => {
+      // Hapus file temporary setelah selesai
+      try { fs.unlinkSync(filePath); } catch (e) {}
+
+      if (code === 0) {
+        res.json({ success: true, message: 'Database berhasil direstore.' });
+      } else {
+        console.error('Restore failed:', errorLog);
+        res.status(500).json({ error: 'Gagal merestore database via psql. Cek log server.' });
+      }
+    });
+  } catch (error) {
+    console.error('Restore error:', error);
     try { fs.unlinkSync(filePath); } catch (e) {}
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Gagal menjalankan restore. Pastikan PostgreSQL (psql) terinstall dan ada di PATH system.' });
-    }
-  });
-
-  let stderr = '';
-  psql.stderr.on('data', (data) => {
-    stderr += data.toString();
-  });
-
-  psql.on('close', (code) => {
-    // Hapus file temporary setelah selesai
-    try { fs.unlinkSync(filePath); } catch (e) {}
-
-    if (res.headersSent) return;
-
-    if (code === 0) {
-      res.json({ success: true, message: 'Database berhasil direstore.' });
-    } else {
-      console.error('Restore failed:', stderr);
-      res.status(500).json({ error: 'Gagal merestore database. Cek console server untuk detail.', details: stderr });
-    }
-  });
+    res.status(500).json({ error: 'Gagal merestore database: ' + error.message });
+  }
 });
 
 // Endpoint Read Error Log (Legacy - from file)
@@ -2398,6 +2626,98 @@ app.post('/api/settings/sso-config', async (req, res) => {
   } catch (err) {
     console.error('Save SSO config error:', err);
     res.status(500).json({ error: 'Gagal menyimpan konfigurasi SSO.' });
+  }
+});
+
+// --- SSO USERS API (Pengguna SSO yang Diizinkan) ---
+
+// Get All SSO Users
+app.get('/api/sso-users', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sso_users ORDER BY created_at DESC');
+    const users = result.rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    res.json(users);
+  } catch (err) {
+    console.error('Get SSO users error:', err);
+    res.status(500).json({ error: 'Gagal mengambil data pengguna SSO.' });
+  }
+});
+
+// Add New SSO User
+app.post('/api/sso-users', async (req, res) => {
+  const { email, name } = req.body;
+  try {
+    // Check if email already exists
+    const existing = await pool.query('SELECT id FROM sso_users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Email sudah terdaftar.' });
+    }
+
+    const id = `SSO-${Date.now()}`;
+    await pool.query(
+      'INSERT INTO sso_users (id, email, name, status) VALUES ($1, $2, $3, $4)',
+      [id, email, name, 'Aktif']
+    );
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('Add SSO user error:', err);
+    res.status(500).json({ error: 'Gagal menambah pengguna SSO.' });
+  }
+});
+
+// Update SSO User
+app.put('/api/sso-users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { email, name } = req.body;
+  try {
+    // Check if email is used by another user
+    const existing = await pool.query('SELECT id FROM sso_users WHERE email = $1 AND id != $2', [email, id]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Email sudah digunakan pengguna lain.' });
+    }
+
+    await pool.query(
+      'UPDATE sso_users SET email = $1, name = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+      [email, name, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update SSO user error:', err);
+    res.status(500).json({ error: 'Gagal update pengguna SSO.' });
+  }
+});
+
+// Toggle SSO User Status
+app.put('/api/sso-users/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    await pool.query(
+      'UPDATE sso_users SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [status, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update SSO user status error:', err);
+    res.status(500).json({ error: 'Gagal update status pengguna SSO.' });
+  }
+});
+
+// Delete SSO User
+app.delete('/api/sso-users/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM sso_users WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete SSO user error:', err);
+    res.status(500).json({ error: 'Gagal menghapus pengguna SSO.' });
   }
 });
 

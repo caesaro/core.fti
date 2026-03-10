@@ -1,5 +1,8 @@
 import { API_BASE_URL } from '../config';
 
+// Flag untuk mencegah multiple logout triggers
+let isLoggingOut = false;
+
 interface ApiOptions extends RequestInit {
   data?: any; // Shortcut untuk body yang otomatis di-stringify
 }
@@ -49,13 +52,19 @@ export const api = async (endpoint: string, options: ApiOptions = {}) => {
       const publicEndpoints = ['/login', '/register', '/set-password', '/settings/maintenance', '/logout'];
       const isPublicEndpoint = publicEndpoints.some(ep => endpoint.includes(ep));
       
-      if (!isPublicEndpoint) {
+      if (!isPublicEndpoint && !isLoggingOut) {
+        // Set flag untuk mencegah multiple logout triggers
+        isLoggingOut = true;
         console.warn('Sesi kadaluarsa atau tidak valid. Melakukan logout otomatis...');
         localStorage.removeItem('isAuthenticated');
         localStorage.removeItem('authToken'); // Hapus token yang tidak valid
         localStorage.removeItem('userId');   // Hapus ID user yang invalid
         localStorage.removeItem('userName'); // Bersihkan nama user
-        window.location.href = '/'; // Redirect paksa ke halaman login
+        
+        // Redirect dengan delay kecil untuk allow pending requests selesai
+        setTimeout(() => {
+          window.location.href = '/'; // Redirect paksa ke halaman login
+        }, 100);
       }
     }
 
