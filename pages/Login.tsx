@@ -13,7 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Role } from "../types";
-import fti from "../src/assets/GedungFTI.jpg";
+import fti from "../src/assets/Gedung.jpg";
 import nocLogo from "../src/assets/NOC.svg";
 import { api } from "../services/api";
 
