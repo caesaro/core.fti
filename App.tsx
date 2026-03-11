@@ -183,6 +183,15 @@ const App: React.FC = () => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
   };
 
+  const markAllNotificationsAsRead = async () => {
+    try {
+      // Optimistic update di UI
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      // Hit endpoint (asumsi backend mendukung)
+      await api(`/api/notifications/read-all`, { method: 'PUT' });
+    } catch (e) { console.error("Gagal mark all read", e); }
+  };
+
   // Helper: Show Toast
   const showToast = (message: string | React.ReactNode, type: 'success' | 'error' | 'info' | 'warning' = 'info', sticky: boolean = false) => {
     const newToast: any = {
@@ -424,6 +433,7 @@ case 'specs-management':
             onLogout={handleLogout}
             notifications={notifications}
             onMarkAsRead={markNotificationAsRead}
+            onMarkAllAsRead={markAllNotificationsAsRead}
             onNavigate={(page) => setCurrentPage(page)}
           />
 
