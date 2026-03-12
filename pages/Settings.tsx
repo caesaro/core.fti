@@ -440,8 +440,8 @@ const Settings: React.FC<SettingsProps> = ({ showToast, onNavigate }) => {
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
           }`}
         >
-          <Users className="w-4 h-4 mr-2" />
-          User Log
+          <LogIn className="w-4 h-4 mr-2" />
+          Log SSO
         </button>
         <button
           onClick={() => setActiveTab('system')}

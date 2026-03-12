@@ -128,16 +128,23 @@ const App: React.FC = () => {
     localStorage.setItem('isSidebarCollapsed', String(newState));
   };
 
-  const handleLogin = (role: Role) => {
+  const handleLogin = (role: Role, userNameFromLogin?: string) => {
     setIsLoading(true);
     setCurrentRole(role);
-    setUserName(localStorage.getItem('userName') || 'User');
+    
+    // Use userName from parameter if provided, otherwise get from localStorage
+    // This fixes the race condition where localStorage wasn't set yet
+    const userName = userNameFromLogin || localStorage.getItem('userName') || 'User';
+    setUserName(userName);
+    
     setIsAuthenticated(true);
     setCurrentPage('dashboard');
     showToast('Selamat datang kembali!', 'success');
     
+    // Save to localStorage synchronously to ensure persistence
     localStorage.setItem('isAuthenticated', 'true');
     localStorage.setItem('currentRole', role);
+    localStorage.setItem('userName', userName);
     setIsLoading(false);
   };
 

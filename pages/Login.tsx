@@ -25,7 +25,7 @@ declare global {
 }
 
 interface LoginProps {
-  onLogin: (role: Role) => void;
+  onLogin: (role: Role, userName?: string) => void;
   showToast: (
     message: string | React.ReactNode,
     type: "success" | "error" | "info" | "warning",
@@ -208,7 +208,7 @@ const Login: React.FC<LoginProps> = ({
           );
         }
 
-        onLogin(data.role as Role);
+        onLogin(data.role as Role, data.name);
       } else {
         showToast(data.error || "Login gagal.", "error");
       }
@@ -400,7 +400,8 @@ const Login: React.FC<LoginProps> = ({
                if (!localStorage.getItem("deviceId")) localStorage.setItem("deviceId", deviceId);
                
                showToast(`Login berhasil sebagai ${data.name}`, "success");
-               onLogin(data.role as Role);
+               // Pass both role and userName to handleLogin to fix race condition
+               onLogin(data.role as Role, data.name);
             } else {
                showToast(data.error || "Gagal login dengan Google.", "error");
             }

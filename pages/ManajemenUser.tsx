@@ -13,6 +13,7 @@ const UserManagement: React.FC = () => {
   const [filterRole, setFilterRole] = useState<'All' | 'Mahasiswa' | 'Dosen'>('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Aktif' | 'Non-Aktif' | 'Suspended'>('All');
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'internal' | 'sso'>('internal');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,8 +25,8 @@ const UserManagement: React.FC = () => {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      // Mengambil data dari backend server
-      const response = await api('/api/users');
+      // Mengambil data dari backend server dengan filter tipe user
+      const response = await api(`/api/users?type=${activeTab}`);
       if (response.ok) {
         const data = await response.json();
         // Filter agar user dengan role ADMIN tidak muncul di list (Hanya bisa dimanipulasi di DB)
@@ -43,7 +44,7 @@ const UserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [activeTab]);
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -149,6 +150,30 @@ const UserManagement: React.FC = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row gap-4 justify-between items-center">
+         {/* Tab Navigation */}
+         <div className="flex space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+            <button
+               onClick={() => setActiveTab('internal')}
+               className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  activeTab === 'internal'
+                     ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-white shadow-sm'
+                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+               }`}
+            >
+               Internal
+            </button>
+            <button
+               onClick={() => setActiveTab('sso')}
+               className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  activeTab === 'sso'
+                     ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-white shadow-sm'
+                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+               }`}
+            >
+               SSO
+            </button>
+         </div>
+
          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input 

@@ -213,8 +213,24 @@ app.get('/', (req, res) => {
 // Endpoint untuk mengambil data users
 app.get('/api/users', verifyRole(['Admin', 'Laboran']), async (req, res) => {
   try {
+    const { type } = req.query;
+    
     // Sort by last_login agar user yang baru aktif (Internal/SSO) muncul paling atas
-    const result = await pool.query('SELECT * FROM users ORDER BY last_login DESC NULLS LAST, created_at DESC');
+    let query = 'SELECT * FROM users';
+    let params = [];
+    
+    // Filter berdasarkan tipe user (internal vs SSO)
+    if (type === 'internal') {
+      // Internal: user yang memiliki password (dibuat manual)
+      query += ' WHERE password IS NOT NULL';
+    } else if (type === 'sso') {
+      // SSO: user yang login via Google (password NULL)
+      query += ' WHERE password IS NULL';
+    }
+    
+    query += ' ORDER BY last_login DESC NULLS LAST, created_at DESC';
+    
+    const result = await pool.query(query, params);
     
     // Mapping data dari format Database ke format Frontend
     const users = result.rows.map(row => ({
