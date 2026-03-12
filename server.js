@@ -54,7 +54,8 @@ app.use(cors({
 }));
 
 // 3. Body Parser
-app.use(express.json({ limit: '50mb' })); // Tingkatkan limit untuk upload gambar 360 (Base64)
+app.use(express.json({ limit: '200mb' })); // Tingkatkan limit ke 200mb untuk gambar 360 resolusi tinggi
+app.use(express.urlencoded({ extended: true, limit: '200mb' })); // Tambahkan juga limit untuk urlencoded
 
 // Konfigurasi Upload (Simpan sementara di folder uploads/)
 const upload = multer({ dest: 'uploads/' });
