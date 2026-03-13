@@ -13,7 +13,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
   const [movements, setMovements] = useState<ItemMovement[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'All' | 'Peminjaman' | 'Manual'>('All');
+  const [filterType, setFilterType] = useState<'All' | 'Peminjaman' | 'Manual' | 'Pengembalian'>('All');
   const [filterInventory, setFilterInventory] = useState<string>('All');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -140,6 +140,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
     switch (type) {
       case 'Peminjaman': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
       case 'Manual': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
+      case 'Pengembalian': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -204,6 +205,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
               <option value="All">Semua Jenis</option>
               <option value="Peminjaman">Peminjaman</option>
               <option value="Manual">Manual</option>
+              <option value="Pengembalian">Pengembalian</option>
             </select>
           </div>
 

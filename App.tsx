@@ -305,7 +305,7 @@ const App: React.FC = () => {
               allowedRoles={[Role.ADMIN, Role.LABORAN]} 
               onNavigate={setCurrentPage}
             >
-              <Inventaris />
+              <Inventaris showToast={showToast} />
             </ProtectedRoute>
           );
         case 'item-movements':

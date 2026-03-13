@@ -1,7 +1,6 @@
-// Page: Loans (Peminjaman Barang)
 import React, { useState, useEffect } from 'react';
 import { Role, Loan, Equipment } from '../types';
-import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin } from 'lucide-react';
+import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import QRScannerModal from '../components/QRScannerModal';
 
@@ -32,7 +31,9 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
 
   // Detail & Return Modal State
   const [selectedGroup, setSelectedGroup] = useState<{key: string, loans: Loan[]} | null>(null);
-  const [returnConfirmation, setReturnConfirmation] = useState<{loans: Loan[], returnTime: string, returnDate: string, returnOfficer: string} | null>(null);
+  const [returnConfirmation, setReturnConfirmation] = useState<{loans: Loan[], returnTime: string, returnDate: string, returnOfficer: string, returnLocation: string, condition: 'Baik'} | null>(null);
+  const [isReturning, setIsReturning] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Scanner State - using reusable QRScannerModal
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -169,42 +170,118 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
       loans: loansToReturn,
       returnDate: now.toLocaleDateString('en-CA'),
       returnTime: now.toTimeString().slice(0, 5),
-      returnOfficer: ''
+      returnOfficer: '',
+      returnLocation: loansToReturn[0]?.location || '',
+                    condition: 'Baik'
     });
   };
 
   const confirmReturn = async () => {
     if (!returnConfirmation) return;
 
-    const { loans, returnDate, returnTime, returnOfficer } = returnConfirmation;
+    const { loans, returnDate, returnTime, returnOfficer, returnLocation, condition } = returnConfirmation;
     
-    if (!returnOfficer) {
-      showToast("Nama petugas pengembalian wajib diisi.", "error");
+    if (!returnOfficer || !returnLocation) {
+      showToast("Petugas dan Lokasi Pengembalian wajib diisi.", "error");
       return;
     }
 
+    setIsReturning(true);
+
     try {
-      const res = await api('/api/loans/return', {
+      // 1. Bulk Update Loan Status (Menggunakan endpoint yang benar di server.js)
+      const loanIds = loans.map(l => l.id);
+      const resLoans = await api('/api/loans/return', {
         method: 'PUT',
         data: {
-          loanIds: loans.map(l => l.id),
-          returnDate, returnTime, returnOfficer
+          loanIds,
+          returnDate, 
+          returnTime, 
+          returnOfficer
         }
       });
-      if (res.ok) fetchData();
-    } catch (e) { showToast("Gagal memproses pengembalian", "error"); }
+
+      if (!resLoans.ok) throw new Error(`Gagal memproses pengembalian`);
+
+      // 2. Update item movement dan inventaris secara paralel per item
+      const updatePromises = loans.map(async (loan) => {
+        const promises = [];
+        
+        // History Perpindahan
+        promises.push(api('/api/item-movements', {
+          method: 'POST',
+          data: {
+            inventoryId: loan.equipmentId,
+            movementDate: returnDate,
+            movementType: 'Pengembalian' as const,
+            fromPerson: loan.borrowerName,
+            toPerson: returnOfficer,
+            movedBy: returnOfficer,
+            quantity: 1,
+            fromLocation: loan.location || 'Unknown',
+            toLocation: returnLocation,
+            notes: `Kondisi: ${condition}`,
+            loanId: loan.id
+          }
+        }));
+
+        // Update Kondisi & Lokasi Barang
+        const currentItem = equipment.find(e => e.id === loan.equipmentId);
+        if (currentItem) {
+          const updatedItem = {
+            ...currentItem,
+            location: returnLocation,
+            condition: condition,
+            isAvailable: true // Pastikan tersedia
+          };
+
+          promises.push(api(`/api/inventory/${loan.equipmentId}`, {
+            method: 'PUT',
+            data: {
+              ukswCode: updatedItem.ukswCode,
+              name: updatedItem.name,
+              category: updatedItem.category,
+              condition: updatedItem.condition,
+              isAvailable: updatedItem.isAvailable,
+              serialNumber: updatedItem.serialNumber,
+              location: updatedItem.location
+            }
+          }));
+        }
+        
+        // Tunggu kedua request untuk item ini selesai
+        const results = await Promise.all(promises);
+        if (results.some(r => !r.ok)) {
+            throw new Error(`Gagal memperbarui data untuk barang ${loan.equipmentName}`);
+        }
+      });
+
+      // Jalankan semua update item secara paralel
+      await Promise.all(updatePromises);
+      
+      await fetchData();
+      showToast(`${loans.length} barang berhasil dikembalikan dan perpindahan tercatat.`, "success");
+      setReturnConfirmation(null);
+    } catch (e: any) { 
+      showToast(`Gagal memproses pengembalian: ${e.message || e}`, "error"); 
+    } finally {
+      setIsReturning(false);
+    }
   };
 
   const handleDeleteGroup = async (groupLoans: Loan[]) => {
     if (confirm(`Hapus riwayat peminjaman untuk ${groupLoans.length} barang ini? Data tidak dapat dikembalikan.`)) {
+      setIsDeleting(true);
       try {
         await api('/api/loans/group', {
           method: 'DELETE',
           data: { loanIds: groupLoans.map(l => l.id) }
         });
-        fetchData();
+        await fetchData();
         showToast("Data peminjaman dihapus.", "info");
+        setSelectedGroup(null);
       } catch (e) { showToast("Gagal menghapus data", "error"); }
+      finally { setIsDeleting(false); }
     }
   };
 
@@ -656,50 +733,58 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                 </button>
               )}
 
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {selectedGroup.loans.map((loan) => (
-                  <div key={loan.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    <div className="flex items-center">
-                      <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg mr-3">
-                        <Box className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                  <div key={loan.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md hover:-translate-y-1 transition-all duration-200 group">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <Box className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{loan.equipmentName}</p>
-                        <p className="text-xs text-gray-500">ID: {loan.equipmentId}</p>
-                      </div>
-                    </div>
-                    <div>
                       {loan.status === 'Dipinjam' ? (
                         <button 
                           onClick={() => initiateReturn([loan])}
-                          className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors flex items-center"
+                          className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap shadow-sm ml-2"
                         >
-                          <Check className="w-3 h-3 mr-1" /> Kembalikan
+                          <Check className="w-3 h-3 inline mr-1" /> Kembalikan
                         </button>
                       ) : (
-                        <div className="text-right">
-                          <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium rounded inline-flex items-center mb-1" title={`Diterima oleh: ${loan.returnOfficer}`}>
-                            <Check className="w-3 h-3 mr-1" /> Dikembalikan
-                          </span>
-                          {loan.actualReturnDate && (
-                            <p className="text-xs text-gray-500">{loan.actualReturnDate} • {loan.actualReturnTime}</p>
-                          )}
+                        <div className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 font-semibold rounded-lg">
+                          Dikembalikan
                         </div>
                       )}
                     </div>
+                    <h5 className="font-bold text-gray-900 dark:text-white text-sm mb-1 truncate">{loan.equipmentName}</h5>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">ID: <span className="font-mono">{loan.equipmentId}</span></p>
+                    {loan.returnLocation && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mb-1 flex items-center">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        Dikembalikan ke: {loan.returnLocation}
+                      </p>
+                    )}
+                    {loan.condition && (
+                      <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        loan.condition === 'Baik' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
+                        loan.condition === 'Rusak Ringan' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                        'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      }`}>
+                        Kondisi: {loan.condition}
+                      </div>
+                    )}
+                    {loan.actualReturnDate && (
+                      <p className="text-xs text-gray-500 mt-2">{loan.actualReturnDate} {loan.actualReturnTime}</p>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between">
               <button 
-                onClick={() => {
-                  handleDeleteGroup(selectedGroup.loans);
-                  setSelectedGroup(null);
-                }}
-                className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center"
+                onClick={() => handleDeleteGroup(selectedGroup.loans)}
+                disabled={isDeleting}
+                className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Trash2 className="w-4 h-4 mr-1" /> Hapus Riwayat
+                {isDeleting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                {isDeleting ? 'Menghapus...' : 'Hapus Riwayat'}
               </button>
               <button onClick={() => setSelectedGroup(null)} className="px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-500">
                 Tutup
@@ -718,7 +803,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Barang</p>
                 <p className="font-medium text-gray-900 dark:text-white">
-                  {returnConfirmation.loans.length === 1 ? returnConfirmation.loans[0].equipmentName : `${returnConfirmation.loans.length} Barang Terpilih`}
+{returnConfirmation!.loans.length === 1 ? returnConfirmation!.loans[0].equipmentName : `${returnConfirmation!.loans.length} Barang Terpilih`}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -726,8 +811,8 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tanggal Kembali</label>
                   <input 
                     type="date" required
-                    value={returnConfirmation.returnDate}
-                    onChange={e => setReturnConfirmation({...returnConfirmation, returnDate: e.target.value})}
+                    value={returnConfirmation!.returnDate}
+                    onChange={e => setReturnConfirmation({...returnConfirmation!, returnDate: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -735,8 +820,8 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Jam Kembali</label>
                   <input 
                     type="time" required
-                    value={returnConfirmation.returnTime}
-                    onChange={e => setReturnConfirmation({...returnConfirmation, returnTime: e.target.value})}
+                    value={returnConfirmation!.returnTime}
+                    onChange={e => setReturnConfirmation({...returnConfirmation!, returnTime: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -744,8 +829,8 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Petugas Pengembalian</label>
                   <select 
                     required
-                    value={returnConfirmation.returnOfficer}
-                    onChange={e => setReturnConfirmation({...returnConfirmation, returnOfficer: e.target.value})}
+                    value={returnConfirmation!.returnOfficer}
+                    onChange={e => setReturnConfirmation({...returnConfirmation!, returnOfficer: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">-- Pilih Petugas --</option>
@@ -754,20 +839,42 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                     ))}
                   </select>
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
+                    <MapPin className="w-3 h-3 mr-1" />
+                    Lokasi Pengembalian <span className="text-xs text-gray-400 ml-1">(default: lokasi peminjaman)</span>
+                  </label>
+                  <input 
+                    type="text" required
+                    value={returnConfirmation!.returnLocation}
+                    onChange={e => setReturnConfirmation({...returnConfirmation!, returnLocation: e.target.value})}
+                    placeholder="Ruang / Rak pengembalian"
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kondisi Barang</label>
+                  <select 
+                    required
+                    value={returnConfirmation!.condition}
+                    onChange={e => setReturnConfirmation({...returnConfirmation!, condition: e.target.value as any})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Baik">Baik</option>
+                    <option value="Rusak Ringan">Rusak Ringan</option>
+                    <option value="Rusak Berat">Rusak Berat</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div className="flex space-x-3">
               <button onClick={() => setReturnConfirmation(null)} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Batal</button>
               <button 
-                disabled={!returnConfirmation.returnDate || !returnConfirmation.returnTime}
-                onClick={() => {
-                  const count = returnConfirmation.loans.length;
-                  confirmReturn();
-                  setReturnConfirmation(null);
-                  showToast(`${count} Barang berhasil dikembalikan`, "success");
-                }} 
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!returnConfirmation!.returnDate || !returnConfirmation!.returnTime || !returnConfirmation!.returnLocation || isReturning}
+                onClick={confirmReturn}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
+                {isReturning && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Konfirmasi
               </button>
             </div>

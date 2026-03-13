@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Equipment } from '../types';
-import { Search, Plus, Filter, Edit, Trash2, X, Check, AlertCircle, Box, ChevronLeft, ChevronRight, FileSpreadsheet, Download, QrCode, Printer, FileText, ChevronDown, Camera, Settings } from 'lucide-react';
+import { Search, Plus, Filter, Edit, Trash2, X, Check, AlertCircle, Box, ChevronLeft, ChevronRight, FileSpreadsheet, Download, QrCode, Printer, FileText, ChevronDown, Camera, Settings, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import QRCode from "react-qr-code";
 import { api } from '../services/api';
 import QRScannerModal from '../components/QRScannerModal'; // Assuming this is a reusable component
 import ConfirmModal from '../components/ConfirmModal'; // Assuming this is a reusable component
+import { TableSkeleton } from '../components/Skeleton';
 
 const LabelComponent = ({ item }: { item: Equipment }) => (
     <div className="p-1 flex flex-col items-center justify-center text-center break-words w-full h-full font-sans">
@@ -16,8 +17,13 @@ const LabelComponent = ({ item }: { item: Equipment }) => (
     </div>
 );
 
-const Inventory: React.FC = () => {
+interface InventoryProps {
+  showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+}
+
+const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
   const [items, setItems] = useState<Equipment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCondition, setFilterCondition] = useState<'All' | 'Baik' | 'Rusak Ringan' | 'Rusak Berat'>('All');
   const [filterCategory, setFilterCategory] = useState<string>('All');
@@ -41,6 +47,7 @@ const Inventory: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Modal State for QR Code
   const [qrItem, setQrItem] = useState<Equipment | null>(null);
@@ -51,17 +58,23 @@ const Inventory: React.FC = () => {
   // Scanner State (using reusable QRScannerModal)
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
+  // Sorting State
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Equipment; direction: 'asc' | 'desc' } | null>(null);
+
   // Reset page when filters change
   useEffect(() => {
     fetchItems();
   }, []);
 
   const fetchItems = async () => {
+    setIsLoading(true);
     try {
       const res = await api('/api/inventory');
       if (res.ok) setItems(await res.json());
     } catch (error) {
       console.error("Failed to fetch inventory", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -79,11 +92,43 @@ const Inventory: React.FC = () => {
     return matchesSearch && matchesCondition && matchesCategory;
   });
 
+  // Sorting Logic
+  const sortedItems = React.useMemo(() => {
+    let sortableItems = [...filteredItems];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+
+        if (aValue === bValue) return 0;
+        if (aValue === undefined || aValue === null) return 1;
+        if (bValue === undefined || bValue === null) return -1;
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredItems, sortConfig]);
+
   // Pagination Logic
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredItems.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const currentItems = sortedItems.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(sortedItems.length / itemsPerPage);
+
+  const handleSort = (key: keyof Equipment) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -114,27 +159,42 @@ const Inventory: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
     try {
       if (editingItem) {
         const res = await api(`/api/inventory/${editingItem.id}`, {
           method: 'PUT',
           data: formData
         });
-        if (res.ok) fetchItems();
+        if (res.ok) {
+          await fetchItems();
+          setIsModalOpen(false);
+          showToast("Data barang berhasil diperbarui.", "success");
+        } else {
+          showToast("Gagal memperbarui data.", "error");
+        }
       } else {
         if (!formData.id) {
-            alert("Kode FTI (ID) wajib diisi!");
+            showToast("Kode FTI (ID) wajib diisi!", "warning");
+            setIsSaving(false);
             return;
         }
         const res = await api('/api/inventory', {
           method: 'POST',
           data: formData
         });
-        if (res.ok) fetchItems();
+        if (res.ok) {
+          await fetchItems();
+          setIsModalOpen(false);
+          showToast("Data barang berhasil disimpan.", "success");
+        } else {
+          showToast("Gagal menyimpan data baru.", "error");
+        }
       }
-      setIsModalOpen(false);
     } catch (error) {
-      alert("Gagal menyimpan data.");
+      showToast("Gagal menyimpan data.", "error");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -187,7 +247,7 @@ const Inventory: React.FC = () => {
       { header: 'Status', key: 'status', width: 15 },
     ];
 
-    filteredItems.forEach(item => {
+    sortedItems.forEach(item => {
       worksheet.addRow({
         id: item.id,
         ukswCode: item.ukswCode,
@@ -213,7 +273,7 @@ const Inventory: React.FC = () => {
 
   const handleExportCSV = () => {
     const headers = ["Kode FTI", "Kode UKSW", "Nama Barang", "Kategori", "Kondisi", "Serial Number", "Lokasi", "Status"];
-    const rows = filteredItems.map(item => [
+    const rows = sortedItems.map(item => [
       item.id, item.ukswCode, item.name, item.category, item.condition, item.serialNumber || '-', item.location || '-', item.isAvailable ? 'Tersedia' : 'Dipinjam'
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.map(c => `"${c}"`).join(','))].join('\n');
@@ -240,7 +300,7 @@ const Inventory: React.FC = () => {
           const worksheet = workbook.getWorksheet(1);
 
           if (!worksheet) {
-             alert("File Excel kosong atau format salah.");
+             showToast("File Excel kosong atau format salah.", "error");
              return;
           }
 
@@ -306,21 +366,21 @@ const Inventory: React.FC = () => {
               await fetchItems();
 
               if (successCount > 0 && errorCount === 0) {
-                  alert(`Berhasil mengimport ${successCount} barang ke database.`);
+                  showToast(`Berhasil mengimport ${successCount} barang ke database.`, "success");
               } else if (successCount > 0 && errorCount > 0) {
-                  alert(`Berhasil mengimport ${successCount} barang. ${errorCount} barang gagal (ID: ${errorIds.join(', ')}).`);
+                  showToast(`Berhasil mengimport ${successCount} barang. ${errorCount} barang gagal (ID: ${errorIds.join(', ')}).`, "warning");
               } else {
-                  alert(`Gagal mengimport data. Pastikan ID belum ada di database.`);
+                  showToast("Gagal mengimport data. Pastikan ID belum ada di database.", "error");
               }
               
               setIsModalOpen(false);
           } else {
-              alert("Tidak ada data valid yang diimport. Pastikan ID unik dan format benar.");
+              showToast("Tidak ada data valid yang diimport. Pastikan ID unik dan format benar.", "warning");
           }
 
       } catch (error) {
           console.error(error);
-          alert("Gagal memproses file Excel.");
+          showToast("Gagal memproses file Excel.", "error");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -337,11 +397,12 @@ const Inventory: React.FC = () => {
       setIsDeleting(true);
       try {
         await api(`/api/inventory/${deleteTargetId}`, { method: 'DELETE' });
-        fetchItems();
-      } catch (e) { alert("Gagal menghapus"); }
-      setShowDeleteModal(false);
-      setDeleteTargetId(null);
-      setIsDeleting(false);
+        await fetchItems();
+        setShowDeleteModal(false);
+        setDeleteTargetId(null);
+        showToast("Barang berhasil dihapus.", "success");
+      } catch (e) { showToast("Gagal menghapus data.", "error"); }
+      finally { setIsDeleting(false); }
     }
   };
 
@@ -463,7 +524,7 @@ const Inventory: React.FC = () => {
         link.click();
       };
       img.onerror = () => {
-        alert('Gagal menghasilkan gambar QR. Silakan coba lagi.');
+        showToast('Gagal menghasilkan gambar QR. Silakan coba lagi.', "error");
       };
       img.src = qrImageUrl;
     }
@@ -610,8 +671,9 @@ const Inventory: React.FC = () => {
     if (foundItem) {
       setIsScannerOpen(false);
       setViewDetailItem(foundItem);
+      showToast("Barang ditemukan.", "success");
     } else {
-      alert(`Barang dengan ID ${decodedText} tidak ditemukan.`);
+      showToast(`Barang dengan ID ${decodedText} tidak ditemukan.`, "error");
     }
   };
 
@@ -647,6 +709,17 @@ const Inventory: React.FC = () => {
   };
 
   const categories = Array.from(new Set(items.map(i => i.category)));
+
+  const SortIcon = ({ columnKey }: { columnKey: keyof Equipment }) => {
+    if (sortConfig?.key !== columnKey) return <ArrowUpDown className="w-3 h-3 ml-1 text-gray-400" />;
+    return sortConfig.direction === 'asc' 
+        ? <ArrowUp className="w-3 h-3 ml-1 text-blue-600" /> 
+        : <ArrowDown className="w-3 h-3 ml-1 text-blue-600" />;
+  };
+
+  if (isLoading) {
+    return <TableSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -771,14 +844,30 @@ const Inventory: React.FC = () => {
                                     }}
                                 />
                             </th>
-                            <th className="px-6 py-4">Kode FTI</th>
-                            <th className="px-6 py-4">Kode UKSW</th>
-                            <th className="px-6 py-4">Serial Number</th>
-                            <th className="px-6 py-4">Nama Barang</th>
-                            <th className="px-6 py-4">Kategori</th>
-                            <th className="px-6 py-4">Kondisi</th>
-                            <th className="px-6 py-4">Lokasi</th>
-                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('id')}>
+                                <div className="flex items-center">Kode FTI <SortIcon columnKey="id" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('ukswCode')}>
+                                <div className="flex items-center">Kode UKSW <SortIcon columnKey="ukswCode" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('serialNumber')}>
+                                <div className="flex items-center">Serial Number <SortIcon columnKey="serialNumber" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('name')}>
+                                <div className="flex items-center">Nama Barang <SortIcon columnKey="name" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('category')}>
+                                <div className="flex items-center">Kategori <SortIcon columnKey="category" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('condition')}>
+                                <div className="flex items-center">Kondisi <SortIcon columnKey="condition" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('location')}>
+                                <div className="flex items-center">Lokasi <SortIcon columnKey="location" /></div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group" onClick={() => handleSort('isAvailable')}>
+                                <div className="flex items-center">Status <SortIcon columnKey="isAvailable" /></div>
+                            </th>
                             <th className="px-6 py-4 text-right print:hidden">Aksi</th>
                         </tr>
                     </thead>
@@ -833,7 +922,7 @@ const Inventory: React.FC = () => {
             
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Menampilkan <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length > 0 ? indexOfFirstItem + 1 : 0}</span> sampai <span className="font-medium text-gray-900 dark:text-white">{Math.min(indexOfLastItem, filteredItems.length)}</span> dari <span className="font-medium text-gray-900 dark:text-white">{filteredItems.length}</span> data
+                  Menampilkan <span className="font-medium text-gray-900 dark:text-white">{sortedItems.length > 0 ? indexOfFirstItem + 1 : 0}</span> sampai <span className="font-medium text-gray-900 dark:text-white">{Math.min(indexOfLastItem, sortedItems.length)}</span> dari <span className="font-medium text-gray-900 dark:text-white">{sortedItems.length}</span> data
                </div>
                
                <div className="flex items-center space-x-2">
@@ -986,8 +1075,9 @@ const Inventory: React.FC = () => {
                     <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                        Batal
                     </button>
-                    <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center shadow-md hover:shadow-lg transition-all">
-                       <Check className="w-4 h-4 mr-2" /> Simpan
+                    <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                       {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                       {isSaving ? 'Menyimpan...' : 'Simpan'}
                     </button>
                  </div>
               </form>

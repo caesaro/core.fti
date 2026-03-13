@@ -66,6 +66,9 @@ export interface Loan {
   actualReturnTime?: string; // Jam realisasi kembali
   status: 'Dipinjam' | 'Dikembalikan' | 'Terlambat';
   location?: string; // Lokasi peminjaman
+  returnLocation?: string; // Lokasi pengembalian
+  condition?: 'Baik' | 'Rusak Ringan' | 'Rusak Berat'; // Kondisi saat pengembalian
+  actualReturnOfficer?: string;
 }
 
 export interface ItemMovement {
@@ -73,7 +76,7 @@ export interface ItemMovement {
   inventoryId: string;
   inventoryName?: string;
   movementDate: string;
-  movementType: 'Peminjaman' | 'Manual';
+  movementType: 'Peminjaman' | 'Manual' | 'Pengembalian';
   fromPerson: string;
   toPerson: string;
   movedBy: string;
