@@ -107,12 +107,6 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
       });
       
       if (res.ok) {
-        if (formData.toLocation) {
-          await api(`/api/inventory/${formData.inventoryId}`, {
-            method: 'PUT',
-            data: { location: formData.toLocation }
-          });
-        }
         fetchData();
         showToast("Perpindahan barang berhasil dicatat.", "success");
         setIsModalOpen(false);

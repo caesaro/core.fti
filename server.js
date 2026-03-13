@@ -1,4 +1,4 @@
-﻿﻿import express from 'express';
+﻿﻿﻿﻿import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -1993,7 +1993,9 @@ app.delete('/api/bookings/:id', async (req, res) => {
 app.get('/api/loans', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT l.*, t.nama_peminjam, t.peminjam_identifier, t.petugas_pinjam, t.jaminan, t.tgl_pinjam, t.waktu_pinjam, i.nama as equipment_name
+            SELECT l.*, t.nama_peminjam, t.peminjam_identifier, t.petugas_pinjam, t.jaminan, t.tgl_pinjam, t.waktu_pinjam, 
+                   i.nama as equipment_name, i.lokasi as current_location,
+                   (SELECT from_location FROM item_movements WHERE loan_id = l.id AND movement_type = 'Peminjaman' LIMIT 1) as original_location
             FROM loans l
             JOIN transactions t ON l.transaction_id = t.id
             JOIN inventory i ON l.inventory_id = i.id
@@ -2013,7 +2015,9 @@ app.get('/api/loans', async (req, res) => {
             borrowTime: row.waktu_pinjam ? row.waktu_pinjam.substring(0, 5) : '',
             actualReturnDate: row.actual_return_date ? new Date(row.actual_return_date).toLocaleDateString('en-CA') : null,
             actualReturnTime: row.actual_return_time ? row.actual_return_time.substring(0, 5) : null,
-            status: row.status
+            status: row.status,
+            location: row.current_location, // Menambahkan lokasi saat ini dari inventory
+            originalLocation: row.original_location // Menambahkan lokasi asal
         }));
         res.json(loans);
     } catch (err) {

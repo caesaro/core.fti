@@ -171,7 +171,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
       returnDate: now.toLocaleDateString('en-CA'),
       returnTime: now.toTimeString().slice(0, 5),
       returnOfficer: '',
-      returnLocation: loansToReturn[0]?.location || '',
+      returnLocation: loansToReturn[0]?.originalLocation || loansToReturn[0]?.location || '',
                     condition: 'Baik'
     });
   };
@@ -206,6 +206,9 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
       // 2. Update item movement dan inventaris secara paralel per item
       const updatePromises = loans.map(async (loan) => {
         const promises = [];
+
+        // Ambil data barang saat ini untuk mengetahui lokasi terakhirnya (Lokasi Peminjaman)
+        const currentItem = equipment.find(e => e.id === loan.equipmentId);
         
         // History Perpindahan
         promises.push(api('/api/item-movements', {
@@ -218,7 +221,8 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
             toPerson: returnOfficer,
             movedBy: returnOfficer,
             quantity: 1,
-            fromLocation: loan.location || 'Unknown',
+            // FIX: Gunakan lokasi aktual dari inventory, bukan dari data loan yang mungkin kosong
+            fromLocation: currentItem?.location || loan.location || 'Unknown',
             toLocation: returnLocation,
             notes: `Kondisi: ${condition}`,
             loanId: loan.id
@@ -226,7 +230,6 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
         }));
 
         // Update Kondisi & Lokasi Barang
-        const currentItem = equipment.find(e => e.id === loan.equipmentId);
         if (currentItem) {
           const updatedItem = {
             ...currentItem,
@@ -842,7 +845,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
                     <MapPin className="w-3 h-3 mr-1" />
-                    Lokasi Pengembalian <span className="text-xs text-gray-400 ml-1">(default: lokasi peminjaman)</span>
+                    Lokasi Pengembalian
                   </label>
                   <input 
                     type="text" required

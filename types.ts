@@ -66,6 +66,7 @@ export interface Loan {
   actualReturnTime?: string; // Jam realisasi kembali
   status: 'Dipinjam' | 'Dikembalikan' | 'Terlambat';
   location?: string; // Lokasi peminjaman
+  originalLocation?: string; // Lokasi asal sebelum dipinjam
   returnLocation?: string; // Lokasi pengembalian
   condition?: 'Baik' | 'Rusak Ringan' | 'Rusak Berat'; // Kondisi saat pengembalian
   actualReturnOfficer?: string;
