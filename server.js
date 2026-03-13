@@ -165,7 +165,7 @@ const apiLimiter = rateLimit({
 });
 
 // Terapkan rate limiter ke semua rute API
-app.use('/api', apiLimiter);
+// app.use('/api', apiLimiter); // Fitur Rate Limiting dinonaktifkan sesuai permintaan
 
 // --- 5. Role-Based Access Control (RBAC) Middleware ---
 const verifyRole = (allowedRoles) => (req, res, next) => {

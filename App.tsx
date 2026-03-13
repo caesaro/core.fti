@@ -227,11 +227,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const TIMEOUT_MS = 30 * 60 * 1000; // 30 Menit
+    const TIMEOUT_MS = 60 * 60 * 1000; // 60 Menit (1 Jam)
     let timeoutId: NodeJS.Timeout;
 
     const triggerLogout = () => {
-      showToast("Sesi Anda berakhir karena tidak aktif selama 30 menit.", "warning");
+      showToast("Sesi Anda berakhir karena tidak aktif selama 1 jam.", "warning");
       handleLogout();
     };
 
