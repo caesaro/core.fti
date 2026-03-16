@@ -107,7 +107,7 @@ const Room360Thumbnail: React.FC<{ room: Room }> = ({ room }) => {
             <div ref={thumbnailRef} className="w-full h-full bg-gray-200" />
             
             <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop items-center z--blur-sm flex20 pointer-events-none">
-                  <MapPin className="w-3 h-3 mr-1"/> {(room as any).floor || 'FTI Lt. 4'}
+                  <MapPin className="w-3 h-3 mr-1"/> {room.floor || 'Lantai 4'}
             </div>
         </div>
     );
@@ -459,7 +459,7 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
     }
 
     setFormData({
-      name: '', category: 'Laboratorium Komputer', description: '', capacity: 0, pic: activeTechnicians[0]?.name || '', image: '', facilities: [], googleCalendarUrl: ''
+      name: '', category: 'Laboratorium Komputer', description: '', capacity: 0, pic: activeTechnicians[0]?.name || '', image: '', facilities: [], googleCalendarUrl: '', floor: 'Lantai 4'
     });
     setIsEditing(false);
     setViewMode('form');
@@ -682,7 +682,9 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                             <div className="mb-3">
                                 <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getCategoryColor(selectedRoom.category)}`}>{selectedRoom.category || 'Umum'}</span>
                             </div>
-                            <p className="text-gray-500 dark:text-gray-400 flex items-center mb-4"><Users className="w-4 h-4 mr-2"/> Kapasitas: {selectedRoom.capacity} Orang | PIC: {selectedRoom.pic}</p>
+                            <p className="text-gray-500 dark:text-gray-400 flex items-center mb-4">
+                                <MapPin className="w-4 h-4 mr-2"/> {selectedRoom.floor || 'Lantai 4'} <span className="mx-2">|</span> <Users className="w-4 h-4 mr-2"/> Kapasitas: {selectedRoom.capacity} Orang <span className="mx-2">|</span> PIC: {selectedRoom.pic}
+                            </p>
                           </div>
                           <div className="flex gap-2 mt-4 md:mt-0">
                              {(canManage) && (

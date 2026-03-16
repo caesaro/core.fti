@@ -86,6 +86,21 @@ const RoomForm: React.FC<RoomFormProps> = ({ initialData, isEditing, onSave, onC
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kapasitas (Orang)</label>
             <input type="number" min="0" required value={formData.capacity || ''} onChange={e => setFormData({ ...formData, capacity: parseInt(e.target.value) })} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lantai</label>
+            <select 
+              value={formData.floor || 'Lantai 4'} 
+              onChange={e => setFormData({ ...formData, floor: e.target.value })} 
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="Lantai 1">Lantai 1</option>
+              <option value="Lantai 2">Lantai 2</option>
+              <option value="Lantai 3">Lantai 3</option>
+              <option value="Lantai 4">Lantai 4</option>
+              <option value="Lantai 5">Lantai 5</option>
+              <option value="Lantai 6">Lantai 6</option>
+            </select>
+          </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deskripsi</label>
             <textarea rows={3} required value={formData.description || ''} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500" />

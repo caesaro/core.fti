@@ -20,6 +20,7 @@ export interface Room {
   pic: string;
   image: string;
   facilities: string[];
+  floor?: string;
   googleCalendarUrl?: string; // Public Embed URL
 }
 
