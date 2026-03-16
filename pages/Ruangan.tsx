@@ -218,7 +218,23 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
   const [labStaff, setLabStaff] = useState<LabStaff[]>([]);
 
   // Expand/Collapse state untuk lantai
-  const [collapsedFloors, setCollapsedFloors] = useState<Record<string, boolean>>({});
+  const [collapsedFloors, setCollapsedFloors] = useState<Record<string, boolean>>(() => {
+    // Coba baca dari Local Storage saat komponen pertama kali dirender
+    const saved = localStorage.getItem('collapsedFloors_state');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  });
+
+  // Simpan ke Local Storage setiap kali state collapsedFloors berubah
+  useEffect(() => {
+    localStorage.setItem('collapsedFloors_state', JSON.stringify(collapsedFloors));
+  }, [collapsedFloors]);
 
   // Pannellum Ref
   const panoramaRef = useRef<HTMLDivElement>(null);
@@ -771,8 +787,14 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                             <div className="mb-3">
                                 <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getCategoryColor(selectedRoom.category)}`}>{selectedRoom.category || 'Umum'}</span>
                             </div>
-                            <p className="text-gray-500 dark:text-gray-400 flex items-center mb-4">
-                                <MapPin className="w-4 h-4 mr-2"/> {selectedRoom.floor || 'Lantai 4'} <span className="mx-2">|</span> <Users className="w-4 h-4 mr-2"/> Kapasitas: {selectedRoom.capacity} Orang <span className="mx-2">|</span> PIC: {selectedRoom.pic}
+                            <p className="text-gray-500 dark:text-gray-400 flex items-center flex-wrap gap-2 mb-4">
+                                <span className="flex items-center"><MapPin className="w-4 h-4 mr-1"/> {selectedRoom.floor || 'Lantai 4'}</span>
+                                <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">|</span>
+                                <span className="flex items-center"><Users className="w-4 h-4 mr-1"/> Kapasitas: {selectedRoom.capacity} Orang</span>
+                                <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">|</span>
+                                <span className="flex items-center"><Monitor className="w-4 h-4 mr-1"/> {selectedRoom.computerCount || 0} Unit PC</span>
+                                <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">|</span>
+                                <span>PIC: {selectedRoom.pic}</span>
                             </p>
                           </div>
                           <div className="flex gap-2 mt-4 md:mt-0">
@@ -1258,9 +1280,14 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode }) => {
                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${getCategoryColor(room.category)}`}>{room.category}</span>
                 </div>
                 <div className="flex justify-between items-center mb-4">
-                    <span className="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded dark:bg-blue-900/30 dark:text-blue-300">
-                       Kap: {room.capacity}
-                    </span>
+                    <div className="flex gap-2">
+                        <span className="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded dark:bg-blue-900/30 dark:text-blue-300">
+                           Kap: {room.capacity}
+                        </span>
+                        <span className="text-xs font-semibold px-2 py-1 bg-purple-100 text-purple-700 rounded dark:bg-purple-900/30 dark:text-purple-300">
+                           {room.computerCount || 0} PC
+                        </span>
+                    </div>
                     {room.googleCalendarUrl && (
                       <span title="Kalender Tersinkronisasi">
                         <Check className="w-4 h-4 text-green-500" />

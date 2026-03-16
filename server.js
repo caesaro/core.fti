@@ -1457,7 +1457,8 @@ app.get('/api/rooms', async (req, res) => {
   try {
     // Join dengan staff untuk dapat nama PIC
     const result = await pool.query(`
-        SELECT r.*, s.nama as pic_name 
+        SELECT r.*, s.nama as pic_name,
+               (SELECT COUNT(*) FROM room_computers rc WHERE rc.room_id = r.id) as computer_count
         FROM rooms r 
         LEFT JOIN staff s ON r.pic_id = s.id 
         ORDER BY r.name ASC
@@ -1473,7 +1474,8 @@ app.get('/api/rooms', async (req, res) => {
       image: row.image_data ? `data:image/jpeg;base64,${row.image_data.toString('base64')}` : null,
       facilities: row.fasilitas || [],
       googleCalendarUrl: row.google_calendar_url,
-      floor: row.lantai || 'FTI Lt. 4'
+      floor: row.lantai || 'FTI Lt. 4',
+      computerCount: parseInt(row.computer_count || '0')
     }));
     res.json(rooms);
   } catch (err) {

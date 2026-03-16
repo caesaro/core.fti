@@ -22,6 +22,7 @@ export interface Room {
   facilities: string[];
   floor?: string;
   googleCalendarUrl?: string; // Public Embed URL
+  computerCount?: number;
 }
 
 export interface Booking {

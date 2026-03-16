@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Room, Role, RoomComputer, Software } from '../types';
 import { 
   Monitor, Cpu, HardDrive, Keyboard, Mouse, Download, FileSpreadsheet,
-  Plus, Edit2, Trash2, Search, ChevronRight, X, Loader2, 
-  Save, Package
+  Plus, Edit2, Trash2, Search, ChevronRight, X, Loader2,
+  Save, Package, Filter
 } from 'lucide-react';
 import { api } from '../services/api';
 import ExcelJS from 'exceljs';
@@ -34,6 +34,8 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [activeTab, setActiveTab] = useState<'computers' | 'software'>('computers');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterPcOperator, setFilterPcOperator] = useState<'all' | 'lt' | 'eq' | 'gt'>('all');
+  const [filterPcCount, setFilterPcCount] = useState<number | ''>('');
 
   // Computer State
   const [roomComputers, setRoomComputers] = useState<RoomComputer[]>([]);
@@ -45,13 +47,26 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
   const [isSaving, setIsSaving] = useState(false);
 
   // Filter
-  const filteredRooms = rooms.filter(room => 
-    room.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredRooms = rooms.filter(room => {
+    const isLab = room.category === 'Laboratorium Komputer';
+    const hasComputer = room.facilities?.includes('Komputer') || false;
+    const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let matchesPcCount = true;
+    const pcCount = (room as any).computerCount || 0;
+    if (filterPcOperator !== 'all' && filterPcCount !== '') {
+      if (filterPcOperator === 'lt') matchesPcCount = pcCount < Number(filterPcCount);
+      else if (filterPcOperator === 'eq') matchesPcCount = pcCount === Number(filterPcCount);
+      else if (filterPcOperator === 'gt') matchesPcCount = pcCount > Number(filterPcCount);
+    }
+
+    return (isLab || hasComputer) && matchesSearch && matchesPcCount;
+  });
 
   const filteredComputers = roomComputers.filter(pc => 
     pc.pcNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    pc.cpu?.toLowerCase().includes(searchTerm.toLowerCase())
+    pc.cpu?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pc.os?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredSoftware = softwareList.filter(soft => 
@@ -108,6 +123,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
       showToast("Data komputer berhasil disimpan.", "success");
       setEditingComputer(null);
       fetchRoomComputers();
+      fetchRooms(); // Update jumlah komputer pada card
     } catch (e) { 
       alert("Gagal menyimpan data komputer"); 
     } finally {
@@ -121,6 +137,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         await api(`/api/computers/${id}`, { method: 'DELETE' });
         showToast("Data komputer berhasil dihapus.", "info");
         fetchRoomComputers();
+        fetchRooms(); // Update jumlah komputer pada card
       } catch (e) { alert("Gagal menghapus"); }
     }
   };
@@ -132,6 +149,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         await api(`/api/rooms/${selectedRoom.id}/computers`, { method: 'DELETE' });
         showToast(`Semua data komputer di ${selectedRoom.name} telah dihapus.`, "success");
         fetchRoomComputers();
+        fetchRooms(); // Update jumlah komputer pada card
       } catch (e) { alert("Gagal menghapus"); }
     }
   };
@@ -201,6 +219,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         await Promise.all(promises);
         alert("Berhasil import komputer");
         fetchRoomComputers();
+        fetchRooms(); // Update jumlah komputer pada card
       } catch (error) { 
         console.error(error);
         alert("Gagal process Excel"); 
@@ -319,15 +338,40 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
           </div>
         </div>
 
-        <div className="relative max-w-md">
-          <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Cari ruangan..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg dark:text-white"
-          />
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Cari ruangan..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+             <Filter className="w-4 h-4 text-gray-400 hidden sm:block" />
+             <select
+               value={filterPcOperator}
+               onChange={(e) => setFilterPcOperator(e.target.value as any)}
+               className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+             >
+                <option value="all">Semua Jumlah PC</option>
+                <option value="lt">Kurang dari (&lt;)</option>
+                <option value="eq">Sama dengan (=)</option>
+                <option value="gt">Lebih dari (&gt;)</option>
+             </select>
+             {filterPcOperator !== 'all' && (
+               <input
+                 type="number"
+                 min="0"
+                 placeholder="Jml"
+                 value={filterPcCount}
+                 onChange={(e) => setFilterPcCount(e.target.value ? Number(e.target.value) : '')}
+                 className="w-20 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+               />
+             )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -345,7 +389,10 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
                 <Monitor className="w-8 h-8 text-gray-400 group-hover:text-blue-500" />
               </div>
               <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded dark:bg-blue-900/30 dark:text-blue-300">Kapasitas: {room.capacity}</span>
+                <div className="flex gap-2">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded dark:bg-blue-900/30 dark:text-blue-300">Kapasitas: {room.capacity}</span>
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded dark:bg-purple-900/30 dark:text-purple-300">{(room as any).computerCount || 0} Unit PC</span>
+                </div>
                 <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
               </div>
             </div>
@@ -421,7 +468,7 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
           <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           <input 
             type="text" 
-            placeholder={activeTab === 'computers' ? "Cari komputer..." : "Cari software..."}
+            placeholder={activeTab === 'computers' ? "Cari No PC, CPU, atau OS..." : "Cari software..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 pr-4 py-2 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg dark:text-white"

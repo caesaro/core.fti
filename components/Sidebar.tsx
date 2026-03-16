@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap, ArrowRightLeft, BookOpen, Cpu, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Calendar, Box, Monitor, Users, FileText, Settings, Shield, Wrench, CalendarRange, PlusCircle, CalendarDays, GraduationCap, ArrowRightLeft, BookOpen, Cpu, Info, ChevronLeft, ChevronRight, DoorOpen, ClipboardList, ClipboardCheck, Archive } from 'lucide-react';
 import { Role } from '../types';
 import nocLogo from "../src/assets/NOC.svg"; 
 
@@ -21,7 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
         { id: 'schedule', label: 'Jadwal Ruang', icon: CalendarRange, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-        { id: 'rooms', label: 'Daftar Ruangan', icon: Calendar, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+        { id: 'rooms', label: 'Daftar Ruangan', icon: DoorOpen, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
         { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN] },
       ]
     },
@@ -29,8 +29,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       title: 'Layanan & Transaksi',
       items: [
         { id: 'create-booking', label: 'Buat Pesanan', icon: PlusCircle, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-        { id: 'bookings', label: 'Pemesanan Saya', icon: FileText, roles: [Role.USER] },
-        { id: 'manage-bookings', label: 'Pesanan Ruang', icon: FileText, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'bookings', label: 'Pemesanan Saya', icon: ClipboardList, roles: [Role.USER] },
+        { id: 'manage-bookings', label: 'Pesanan Ruang', icon: ClipboardCheck, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'loans', label: 'Peminjaman Barang', icon: Box, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'item-movements', label: 'Perpindahan Barang', icon: ArrowRightLeft, roles: [Role.ADMIN, Role.LABORAN] },
       ]
@@ -40,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       items: [
         { id: 'class-schedule', label: 'Jadwal Kuliah', icon: BookOpen, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'specs-management', label: 'Spesifikasi & Software', icon: Cpu, roles: [Role.ADMIN, Role.LABORAN] },
-        { id: 'inventory', label: 'Inventaris', icon: Monitor, roles: [Role.ADMIN, Role.LABORAN] },
+        { id: 'inventory', label: 'Inventaris', icon: Archive, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'pkl-management', label: 'Manajemen PKL', icon: GraduationCap, roles: [Role.ADMIN, Role.LABORAN] },
         { id: 'laboran-management', label: 'Manajemen Laboran', icon: Wrench, roles: [Role.ADMIN] },
         { id: 'users', label: 'Manajemen User', icon: Users, roles: [Role.ADMIN] },
