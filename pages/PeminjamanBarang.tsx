@@ -4,6 +4,10 @@ import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditC
 import { api } from '../services/api';
 import QRScannerModal from '../components/QRScannerModal';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import { formatDateID } from '../src/utils/formatters';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
 
 interface LoansProps {
   role: Role;
@@ -425,6 +429,20 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
 
   const sortedGroupKeys = Object.keys(groupedLoans).sort((a, b) => b.localeCompare(a));
 
+  // Pagination
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    paginatedData: currentKeys,
+    totalPages
+  } = usePagination(sortedGroupKeys, 10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filter, startDate, endDate, itemsPerPage, setCurrentPage]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -442,14 +460,11 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-4 justify-between items-center">
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Cari nama peminjam atau barang..." 
+          <div className="w-full sm:w-auto">
+            <SearchBar 
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
+              onChange={setSearchTerm}
+              placeholder="Cari nama peminjam atau barang..."
             />
           </div>
           
@@ -496,7 +511,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {sortedGroupKeys.length > 0 ? sortedGroupKeys.map((key) => {
+              {currentKeys.length > 0 ? currentKeys.map((key) => {
                 const groupLoans = groupedLoans[key];
                 const firstLoan = groupLoans[0];
                 
@@ -517,12 +532,12 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-gray-900 dark:text-white text-sm">{firstLoan.borrowDate}</div>
+                      <div className="text-gray-900 dark:text-white text-sm">{formatDateID(firstLoan.borrowDate)}</div>
                       <div className="text-xs text-gray-500">{firstLoan.borrowTime}</div>
                       {allReturned && firstLoan.actualReturnDate && (
                         <div className="mt-2 pt-1 border-t border-gray-100 dark:border-gray-700">
                           <div className="text-[10px] uppercase font-bold text-green-600 dark:text-green-400">Dikembalikan:</div>
-                          <div className="text-xs text-gray-500">{firstLoan.actualReturnDate} {firstLoan.actualReturnTime} (Oleh: {firstLoan.returnOfficer})</div>
+                          <div className="text-xs text-gray-500">{formatDateID(firstLoan.actualReturnDate)} {firstLoan.actualReturnTime} (Oleh: {firstLoan.returnOfficer})</div>
                         </div>
                       )}
                     </td>
@@ -555,6 +570,16 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="print:hidden">
+          <Pagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={sortedGroupKeys.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
         </div>
       </div>
 
@@ -685,7 +710,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                   </div>
                 </div>
                 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-3">
                   {formData.equipmentIds.map((selectedId, index) => (
                     <div key={index} className="flex gap-2 animate-fade-in-up">
                       <SearchableSelect
@@ -772,7 +797,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                 <div className="text-right">
                   <p className="text-sm text-gray-500 dark:text-gray-400">Waktu Pinjam</p>
                   <p className="text-md font-medium text-gray-900 dark:text-white flex items-center justify-end">
-                    <Calendar className="w-4 h-4 mr-1" /> {selectedGroup.loans[0].borrowDate}
+                    <Calendar className="w-4 h-4 mr-1" /> {formatDateID(selectedGroup.loans[0].borrowDate)}
                   </p>
                   <p className="text-md font-medium text-gray-900 dark:text-white flex items-center justify-end mt-1">
                     <Clock className="w-4 h-4 mr-1" /> {selectedGroup.loans[0].borrowTime || '-'}
@@ -842,7 +867,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                       <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700">
                         <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 mb-1">Info Pengembalian:</p>
                         <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center">
-                          <Calendar className="w-3 h-3 mr-1 text-gray-400" /> {loan.actualReturnDate} {loan.actualReturnTime}
+                          <Calendar className="w-3 h-3 mr-1 text-gray-400" /> {formatDateID(loan.actualReturnDate)} {loan.actualReturnTime}
                         </p>
                         {loan.returnOfficer && (
                           <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center mt-1">

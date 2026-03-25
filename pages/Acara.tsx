@@ -5,6 +5,7 @@ import { Search, Calendar, Clock, MapPin, User, Share2, Download, X, Wrench, Inf
 import { api } from '../services/api';
 import html2canvas from 'html2canvas';
 import nocLogo from "../src/assets/noc.png";
+import { formatDateID } from '../src/utils/formatters';
 
 interface EventsProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -145,7 +146,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                         {event.schedules && event.schedules.length > 1 ? (
                            <span>{event.schedules.length} Jadwal (Lihat Detail)</span>
                         ) : (
-                           <span>{event.date}, {event.startTime} - {event.endTime}</span>
+                           <span>{formatDateID(event.date)}, {event.startTime} - {event.endTime}</span>
                         )}
                     </div>
                     <div className="flex items-center">
@@ -194,7 +195,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                         <div key={idx} className="flex flex-col sm:flex-row sm:items-center text-sm text-gray-600 dark:text-gray-300">
                                             <div className="flex items-center min-w-[150px]">
                                                 <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                                                <span>{new Date(sch.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                                <span>{formatDateID(sch.date)}</span>
                                             </div>
                                             <div className="flex items-center mt-1 sm:mt-0 sm:ml-4">
                                                 <Clock className="w-4 h-4 mr-2 text-gray-400" />
@@ -205,7 +206,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                 ) : (
                                     <>
                                         <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center mt-2">
-                                            <Calendar className="w-4 h-4 mr-2" /> {selectedEvent.date}
+                                            <Calendar className="w-4 h-4 mr-2" /> {formatDateID(selectedEvent.date)}
                                         </p>
                                         <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center mt-1">
                                             <Clock className="w-4 h-4 mr-2" /> {selectedEvent.startTime} - {selectedEvent.endTime}
@@ -324,7 +325,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                                         {selectedEvent.schedules.slice(0, 5).map((sch: any, idx: number) => (
                                                             <div key={idx} className="border-b border-gray-100 dark:border-gray-800 last:border-0 pb-1 last:pb-0">
                                                                 <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                                                    {new Date(sch.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
+                                                                    {formatDateID(sch.date)}
                                                                 </p>
                                                                 <p className="text-sm text-gray-700 dark:text-gray-300">
                                                                     {sch.startTime?.slice(0,5)} - {sch.endTime?.slice(0,5)} WIB
@@ -337,7 +338,7 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedEvent.date}</p>
+                                                        <p className="text-sm font-bold text-gray-900 dark:text-white">{formatDateID(selectedEvent.date)}</p>
                                                         <p className="text-sm text-gray-700 dark:text-gray-300">{selectedEvent.startTime} - {selectedEvent.endTime}</p>
                                                     </>
                                                 )}

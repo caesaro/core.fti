@@ -1301,15 +1301,48 @@ app.post('/api/inventory', async (req, res) => {
 
 app.put('/api/inventory/:id', async (req, res) => {
   const { ukswCode, name, category, condition, isAvailable, serialNumber, location, vendor } = req.body;
+  const client = await pool.connect();
+  
   try {
-    await pool.query(
+    await client.query('BEGIN');
+    
+    // 1. Ambil data lama untuk mengecek perubahan lokasi
+    const oldItemRes = await client.query('SELECT lokasi FROM inventory WHERE id = $1', [req.params.id]);
+    const oldLocation = oldItemRes.rows.length > 0 ? (oldItemRes.rows[0].lokasi || '') : '';
+    const newLocation = location || '';
+
+    // 2. Update data inventaris
+    await client.query(
       'UPDATE inventory SET uksw_code=$1, nama=$2, kategori=$3, kondisi=$4, is_available=$5, serial_number=$6, lokasi=$7, vendor=$8 WHERE id=$9',
-      [ukswCode, name, category, condition, isAvailable, serialNumber, location || '', vendor || '', req.params.id]
+      [ukswCode, name, category, condition, isAvailable, serialNumber, newLocation, vendor || '', req.params.id]
     );
+
+    // 3. Catat di item_movements jika lokasi berubah
+    if (oldLocation !== newLocation && oldItemRes.rows.length > 0) {
+      let movedBy = 'System';
+      if (req.user && req.user.id) {
+        const userRes = await client.query('SELECT nama FROM users WHERE id = $1', [req.user.id]);
+        if (userRes.rows.length > 0) movedBy = userRes.rows[0].nama;
+      }
+
+      const moveId = `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const movementDate = new Date().toISOString().split('T')[0];
+
+      await client.query(
+        `INSERT INTO item_movements (id, inventory_id, movement_date, movement_type, from_person, to_person, moved_by, quantity, from_location, to_location, notes) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [moveId, req.params.id, movementDate, 'Manual', '', '', movedBy, 1, oldLocation, newLocation, `Perubahan lokasi via Edit Inventaris. Kondisi: ${condition}`]
+      );
+    }
+
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'DB Error' });
+  } finally {
+    client.release();
   }
 });
 

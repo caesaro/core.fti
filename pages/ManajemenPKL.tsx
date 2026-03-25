@@ -4,6 +4,10 @@ import nocLogo from "../src/assets/noc.png";
 import { api } from '../services/api';
 import { PKLStudent } from '../types';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import { formatDateID } from '../src/utils/formatters';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
 
 interface PKLManagementProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -88,6 +92,20 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
     const matchesSekolah = filterSekolah === 'All' || pkl.sekolah === filterSekolah;
     return matchesSearch && matchesStatus && matchesSekolah;
   });
+
+  // Pagination
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    paginatedData: currentPKL,
+    totalPages
+  } = usePagination(filteredPKL, 10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterSekolah, itemsPerPage, setCurrentPage]);
 
   // Handle file upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,15 +386,12 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
 
       {/* Filter Bar */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row gap-4 justify-between items-center print:border-none print:shadow-none print:p-0">
-         <div className="relative w-full sm:w-64 print:hidden">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Cari nama atau sekolah..." 
+         <div className="w-full sm:w-auto print:hidden">
+           <SearchBar 
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
-            />
+              onChange={setSearchTerm}
+              placeholder="Cari nama atau sekolah..."
+           />
          </div>
          <div className="flex gap-2 w-full sm:w-auto print:hidden">
            <select
@@ -418,7 +433,7 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
                   </tr>
                </thead>
                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-400">
-                  {filteredPKL.length > 0 ? filteredPKL.map((pkl) => (
+                  {currentPKL.length > 0 ? currentPKL.map((pkl) => (
                      <tr key={pkl.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-6 py-4">
                            <div className="font-bold text-gray-900 dark:text-white">{pkl.nama}</div>
@@ -429,7 +444,7 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
                         </td>
                         <td className="px-6 py-4">
                            <div className="text-gray-900 dark:text-gray-300 text-xs">
-                             {pkl.tanggalMulai} - {pkl.tanggalSelesai}
+                             {formatDateID(pkl.tanggalMulai)} - {formatDateID(pkl.tanggalSelesai)}
                            </div>
                         </td>
                         <td className="px-6 py-4">
@@ -485,6 +500,16 @@ const PKLManagement: React.FC<PKLManagementProps> = ({ showToast }) => {
                   )}
                </tbody>
             </table>
+         </div>
+         <div className="print:hidden">
+           <Pagination 
+             currentPage={currentPage}
+             totalPages={totalPages}
+             totalItems={filteredPKL.length}
+             itemsPerPage={itemsPerPage}
+             onPageChange={setCurrentPage}
+             onItemsPerPageChange={setItemsPerPage}
+           />
          </div>
       </div>
 

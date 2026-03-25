@@ -8,6 +8,7 @@ import nocLogo from "../src/assets/noc.png";
 import BookingForm from '../components/BookingForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useRooms } from '../hooks/useRooms';
+import { formatDateID } from '../src/utils/formatters';
 
 interface PemesananSayaProps {
   userId: string;
@@ -243,7 +244,7 @@ const PemesananSaya: React.FC<PemesananSayaProps> = ({ userId, showToast }) => {
                            <MapPin className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> {getRoomName(booking.roomId)}
                         </div>
                         <div className="flex flex-col space-y-1 text-xs text-gray-500">
-                           <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> {booking.date}</span>
+                           <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> {formatDateID(booking.date)}</span>
                            <span className="flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> {booking.startTime} - {booking.endTime}</span>
                         </div>
                      </td>

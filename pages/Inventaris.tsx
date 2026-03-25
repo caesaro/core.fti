@@ -9,6 +9,8 @@ import ConfirmModal from '../components/ConfirmModal'; // Assuming this is a reu
 import { TableSkeleton } from '../components/Skeleton';
 import { useInventory } from '../hooks/useInventory';
 import { usePagination } from '../hooks/usePagination';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
 
 const LabelComponent = ({ item, includeQR = true }: { item: Equipment; includeQR?: boolean }) => (
     <div className={`px-1 flex flex-col items-center text-center break-words w-full h-full font-sans ${includeQR ? 'justify-start pt-1' : 'justify-center'}`}>
@@ -823,24 +825,13 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
               className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
             />
          </div>
+         <SearchBar 
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Cari nama, Kode FTI, UKSW, atau SN..."
+         />
          
          <div className="flex flex-wrap gap-3 w-full lg:w-auto items-center justify-end">
-             <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Tampilkan</span>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                  className="px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-             </div>
-
-             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 hidden sm:block"></div>
-
              <div className="flex items-center gap-2">
                  <Filter className="w-4 h-4 text-gray-400" />
                  <select 
@@ -965,31 +956,15 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
                     </tbody>
                 </table>
             </div>
-            
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
-               <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Menampilkan <span className="font-medium text-gray-900 dark:text-white">{sortedItems.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> sampai <span className="font-medium text-gray-900 dark:text-white">{Math.min(currentPage * itemsPerPage, sortedItems.length)}</span> dari <span className="font-medium text-gray-900 dark:text-white">{sortedItems.length}</span> data
-               </div>
-               
-               <div className="flex items-center space-x-2">
-                  <button 
-                     onClick={prevPage}
-                     disabled={currentPage === 1}
-                     className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 px-2">
-                     Halaman {currentPage} dari {totalPages || 1}
-                  </span>
-                  <button 
-                     onClick={nextPage}
-                     disabled={currentPage === totalPages || totalPages === 0}
-                     className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <ChevronRight className="w-4 h-4" />
-                  </button>
-               </div>
+            <div className="print:hidden">
+              <Pagination 
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={sortedItems.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
             </div>
       </div>
 

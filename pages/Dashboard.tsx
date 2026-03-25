@@ -8,11 +8,14 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Skeleton } from '../components/Skeleton';
+import { formatDateID } from '../src/utils/formatters';
 
 interface DashboardProps {
   role: Role;
   onNavigate?: (page: string) => void;
 }
+
+
 
 const StatCard: React.FC<{ title: string; value: string; icon: React.ElementType; color: string; onClick?: () => void; subtext?: string }> = ({ title, value, icon: Icon, color, onClick, subtext }) => (
   <div onClick={onClick} className={`bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 ${onClick ? 'cursor-pointer hover:shadow-md transition-all hover:scale-[1.02]' : ''}`}>
@@ -291,7 +294,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-gray-900 dark:text-white">{booking.purpose}</p>
-                                    <p className="text-xs text-gray-500">{booking.date} • {booking.startTime}</p>
+                                    <p className="text-xs text-gray-500">{formatDateID(booking.date)} • {booking.startTime}</p>
                                 </div>
                             </div>
                             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${booking.status === BookingStatus.PENDING ? 'bg-yellow-100 text-yellow-800' : booking.status === BookingStatus.APPROVED ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -373,9 +376,9 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
         {/* Left Column: Charts */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Statistik Penggunaan Ruangan</h3>
-          <div className="h-64">
+          <div className="flex-1 min-h-[300px]">
             {bookings.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barData}>
@@ -485,7 +488,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                               </div>
                               <div>
                                   <p className="text-sm font-medium text-gray-900 dark:text-white">{booking.purpose}</p>
-                                  <p className="text-xs text-gray-500">{booking.userName} • {booking.date}</p>
+                                  <p className="text-xs text-gray-500">{booking.userName} • {formatDateID(booking.date)}</p>
                               </div>
                           </div>
                           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${booking.status === BookingStatus.PENDING ? 'bg-yellow-100 text-yellow-800' : booking.status === BookingStatus.APPROVED ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>

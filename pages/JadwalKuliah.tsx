@@ -4,6 +4,7 @@ import { Search, Plus, Filter, Edit, Trash2, X, Check, RefreshCw, Loader2, Users
 import { api } from '../services/api';
 import { TableSkeleton } from '../components/Skeleton';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import SearchBar from '../components/SearchBar';
 
 interface ClassSchedule {
   id: string;
@@ -210,16 +211,11 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row gap-4 justify-between items-center">
-         <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Cari kode/nama matakuliah..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
-            />
-         </div>
+         <SearchBar 
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Cari kode/nama matakuliah..."
+         />
          <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center">
              <button 
                 onClick={fetchSchedules} 

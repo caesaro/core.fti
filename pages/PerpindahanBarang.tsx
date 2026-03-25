@@ -8,6 +8,9 @@ import ConfirmModal from '../components/ConfirmModal';
 import QRScannerModal from '../components/QRScannerModal';
 import { usePagination } from '../hooks/usePagination';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
+import { formatDateID } from '../src/utils/formatters';
 
 interface ItemMovementsProps {
   role: Role;
@@ -288,16 +291,11 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
               Riwayat Lengkap
             </button>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Cari barang atau orang..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          <SearchBar 
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Cari barang atau orang..."
+          />
         </div>
         
         <div className="flex flex-wrap gap-3 w-full xl:w-auto items-center justify-end">
@@ -349,7 +347,7 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900 dark:text-white">{movement.inventoryName || getEquipmentName(movement.inventoryId)}</div>
                     <div className="text-xs text-gray-500 mt-0.5">
-                      {movement.movementDate}
+                      {formatDateID(movement.movementDate)}
                       {movement.createdAt && ` • ${new Date(movement.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`}
                     </div>
                   </td>
@@ -402,43 +400,14 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
           </table>
         </div>
 
-        {/* Pagination Controls */}
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-            <span>Tampilkan</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => setItemsPerPage(Number(e.target.value))}
-              className="px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-            <span>dari {filteredMovements.length} data</span>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={prevPage}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 px-2">
-              Halaman {currentPage} dari {totalPages || 1}
-            </span>
-            <button
-              onClick={nextPage}
-              disabled={currentPage === totalPages || totalPages === 0}
-              className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        <Pagination 
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredMovements.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       {isModalOpen && (
@@ -617,7 +586,7 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
                   <span className="text-gray-500 dark:text-gray-400">Tanggal</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{selectedMovement.movementDate}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{formatDateID(selectedMovement.movementDate)}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
                   <span className="text-gray-500 dark:text-gray-400">Jumlah</span>

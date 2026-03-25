@@ -3,10 +3,14 @@ import { Booking, BookingStatus, Room, Role } from '../types';
 import { Search, Filter, CheckCircle, XCircle, Calendar, Clock, MapPin, User, AlertCircle, FileText, Download, X, Phone, Shield, Loader2, Wrench, Edit, Save, Share2, FileSpreadsheet, AlertTriangle, Trash2, Plus } from 'lucide-react';
 import { api } from '../services/api';
 import html2canvas from 'html2canvas';
-import nocLogo from "../src/assets/noc.png";
 import BookingForm from '../components/BookingForm';
 import { useGoogleCalendar } from '../hooks/useGoogleCalendar';
 import { useRooms } from '../hooks/useRooms';
+import ApprovalModal from '../components/ApprovalModal';
+import RejectionModal from '../components/RejectionModal';
+import DeleteBookingModal from '../components/DeleteBookingModal';
+import BookingDetailModal from '../components/BookingDetailModal';
+import { formatDateID } from '../src/utils/formatters';
 
 declare global {
   interface Window {
@@ -40,6 +44,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'All' | BookingStatus>('All');
   const [filterDate, setFilterDate] = useState('');
+  const [filterRoom, setFilterRoom] = useState<string>('All');
   const [selectedBooking, setSelectedBooking] = useState<BookingWithTech | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -57,8 +62,6 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
   const [isEditingTech, setIsEditingTech] = useState(false);
   const [editTechData, setEditTechData] = useState<{ pic: string[], needs: string }>({ pic: [], needs: '' });
 
-  const [isDeleteCalendarModalOpen, setIsDeleteCalendarModalOpen] = useState(false);
-  const [bookingToDeleteCalendar, setBookingToDeleteCalendar] = useState<BookingWithTech | null>(null);
   const [deleteOption, setDeleteOption] = useState<'single' | 'thisAndFollowing' | 'all'>('single');
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -79,7 +82,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
 
     // Try to delete from Google Calendar first (if approved)
     if (bookingToDelete.status === BookingStatus.APPROVED && googleApi.isGapiInitialized) {
-      const gapiResult: any = await deleteFromGoogleCalendar(bookingToDelete, 'all');
+      const gapiResult: any = await deleteFromGoogleCalendar(bookingToDelete, deleteOption);
       if (!gapiResult.success && gapiResult.message !== "Dilewati: Tidak ada URL Kalender" && gapiResult.message !== "Event tidak ditemukan di Google Calendar") {
         showToast(`Peringatan: Gagal hapus dari Calendar (${gapiResult.message}), namun data tetap dihapus.`, 'warning');
       }
@@ -152,23 +155,6 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
       console.error("GAPI Delete Error:", error);
       return { success: false, message: error.result?.error?.message || "Kesalahan GAPI" };
     }
-  };
-
-  const handleDeleteCalendarClick = (booking: BookingWithTech) => {
-    setBookingToDeleteCalendar(booking);
-    setDeleteOption('single');
-    setIsDeleteCalendarModalOpen(true);
-  };
-
-  const handleConfirmDeleteCalendar = async () => {
-    if (!bookingToDeleteCalendar) return;
-    setIsDeleting(true);
-    const result: any = await deleteFromGoogleCalendar(bookingToDeleteCalendar, deleteOption);
-    if (!result.success) showToast(`Gagal: ${result.message}`, 'error');
-    else showToast(result.message, 'success');
-    setIsDeleting(false);
-    setIsDeleteCalendarModalOpen(false);
-    setBookingToDeleteCalendar(null);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -293,6 +279,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
 
   const handleRejectClick = (booking: BookingWithTech) => {
     setBookingToReject(booking);
+    setDeleteOption('all');
     setRejectionReason('');
     setIsRejectionModalOpen(true);
   };
@@ -301,7 +288,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
     if (bookingToReject) {
       const isCancellation = bookingToReject.status === BookingStatus.APPROVED;
       if (isCancellation && googleApi.isGapiInitialized) {
-        const gapiResult: any = await deleteFromGoogleCalendar(bookingToReject, 'all');
+        const gapiResult: any = await deleteFromGoogleCalendar(bookingToReject, deleteOption);
         if (!gapiResult.success && gapiResult.message !== "Dilewati: Tidak ada URL Kalender" && gapiResult.message !== "Event tidak ditemukan di Google Calendar") {
           showToast(`Peringatan: Gagal hapus dari Calendar (${gapiResult.message}), namun status tetap diupdate.`, 'warning');
         } else if (gapiResult.success) {
@@ -352,7 +339,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
       const image = canvas.toDataURL("image/png");
       const link = document.createElement('a');
       link.href = image;
-      link.download = `Booking_${selectedBooking.userName}_${selectedBooking.date}.png`;
+      link.download = `Booking_${selectedBooking.userName}_${formatDateID(selectedBooking.date)}.png`;
       link.click();
       showToast("Gambar berhasil didownload!", "success");
     } catch (error) {
@@ -385,10 +372,11 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
     const matchesSearch = b.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.purpose.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'All' || b.status === filterStatus;
+    const matchesRoom = filterRoom === 'All' || b.roomId === filterRoom;
     
     // Cek tanggal di semua jadwal (schedules)
     const matchesDate = !filterDate || (b.schedules && b.schedules.some((s: any) => new Date(s.date).toLocaleDateString('en-CA') === filterDate)) || b.date === filterDate;
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesRoom && matchesDate;
   });
 
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
@@ -427,7 +415,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
               className="pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm w-full dark:text-white focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
             <input
               type="date"
               value={filterDate}
@@ -435,7 +423,18 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
               className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
               title="Filter Tanggal"
             />
-            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={filterRoom}
+              onChange={(e) => setFilterRoom(e.target.value)}
+              className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer max-w-[140px] truncate"
+              title="Filter Ruangan"
+            >
+              <option value="All">Semua Ruang</option>
+              {rooms.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            <Filter className="w-4 h-4 text-gray-400 hidden lg:block" />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as any)}
@@ -495,8 +494,8 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900 dark:text-white mb-1 flex items-center">
-                      <MapPin className="w-3 h-3 mr-1 text-gray-400" /> {getRoomName(booking.roomId)}
+                    <div className="font-bold mb-1 flex items-center text-blue-600 dark:text-blue-400">
+                      <MapPin className="w-3 h-3 mr-1 opacity-70" /> {getRoomName(booking.roomId)}
                     </div>
                     {booking.schedules && booking.schedules.length > 1 ? (
                        <div className="flex items-center text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">
@@ -504,7 +503,7 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
                        </div>
                     ) : (
                         <div className="flex flex-col space-y-0.5 text-xs text-gray-500">
-                          <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {booking.date}</span>
+                          <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {formatDateID(booking.date)}</span>
                           <span className="flex items-center"><Clock className="w-3 h-3 mr-1" /> {booking.startTime} - {booking.endTime}</span>
                         </div>
                     )}
@@ -580,316 +579,25 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
       </div>
 
       {/* Detail Modal */}
-      {selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
-              <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
-                <FileText className="w-5 h-5 mr-2 text-blue-600" />
-                Detail Peminjaman
-              </h3>
-              <button onClick={() => setSelectedBooking(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* Kolom Kiri: Info Peminjam */}
-                <div className="space-y-4">
-                  <h4 className="text-sm font-semibold text-gray-500 uppercase border-b pb-2 mb-3">Informasi Peminjam</h4>
-                  <div className="flex items-start">
-                    <User className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedBooking.userName}</p>
-                      <p className="text-xs text-gray-500">{selectedBooking.userId}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <Shield className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Penanggung Jawab</p>
-                      <p className="text-xs text-gray-500">{selectedBooking.responsiblePerson}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <Phone className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Kontak / WA</p>
-                      <p className="text-xs text-gray-500">{selectedBooking.contactPerson}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Kolom Kanan: Info Peminjaman */}
-                <div className="space-y-4">
-                  <h4 className="text-sm font-semibold text-gray-500 uppercase border-b pb-2 mb-3">Detail Kegiatan</h4>
-                  <div className="flex items-start">
-                    <MapPin className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{getRoomName(selectedBooking.roomId)}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Tampilkan List Jadwal di Modal Detail */}
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-bold text-gray-500 uppercase flex items-center"><Calendar className="w-4 h-4 mr-1"/> Jadwal Pemakaian</h5>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden max-h-40 overflow-y-auto">
-                        {selectedBooking.schedules && selectedBooking.schedules.length > 0 ? (
-                            selectedBooking.schedules.map((sch: any, idx: number) => (
-                                <div key={idx} className="px-3 py-2 text-sm flex justify-between border-b border-gray-100 dark:border-gray-600 last:border-0 hover:bg-gray-100 dark:hover:bg-gray-600">
-                                    <span className="text-gray-800 dark:text-gray-200">{new Date(sch.date).toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'})}</span>
-                                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400 ml-2">{sch.startTime?.slice(0,5)} - {sch.endTime?.slice(0,5)}</span>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="px-3 py-2 text-sm text-gray-500">{selectedBooking.date} {selectedBooking.startTime} - {selectedBooking.endTime}</div>
-                        )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Keperluan:</p>
-                    <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
-                      {selectedBooking.purpose}
-                    </p>
-                    {selectedBooking.status === BookingStatus.REJECTED && selectedBooking.rejectionReason && (
-                      <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
-                        <span className="font-bold block text-xs uppercase mb-1">Alasan Penolakan:</span>
-                        {selectedBooking.rejectionReason}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Technical Support Section */}
-                {(selectedBooking.status === BookingStatus.APPROVED || selectedBooking.status === BookingStatus.REJECTED) && (
-                  <div className="md:col-span-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-sm font-semibold text-gray-500 uppercase flex items-center">
-                        <Wrench className="w-4 h-4 mr-2" /> Technical Support
-                      </h4>
-                      {!isEditingTech ? (
-                        <button onClick={() => setIsEditingTech(true)} className="text-xs text-blue-600 hover:underline flex items-center">
-                          <Edit className="w-3 h-3 mr-1" /> Edit Data Teknis
-                        </button>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button onClick={() => setIsEditingTech(false)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
-                          <button onClick={handleSaveTechData} className="text-xs text-green-600 hover:text-green-700 font-bold flex items-center">
-                            <Save className="w-3 h-3 mr-1" /> Simpan
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                      {isEditingTech ? (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">PIC Laboran</label>
-                            <div className="flex flex-wrap gap-2 mb-2">
-                              {editTechData.pic.map(picId => {
-                                const staff = staffList.find(s => s.id === picId);
-                                return (
-                                  <span key={picId} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                                    {staff?.name}
-                                    <button type="button" onClick={() => setEditTechData(prev => ({ ...prev, pic: prev.pic.filter(id => id !== picId) }))} className="ml-1 text-blue-600 hover:text-blue-800">
-                                      <X className="w-3 h-3" />
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <select
-                              value=""
-                              onChange={e => { if (e.target.value) setEditTechData(prev => ({ ...prev, pic: [...prev.pic, e.target.value] })) }}
-                              className="w-full px-3 py-1.5 text-sm border rounded dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">+ Tambah PIC</option>
-                              {staffList.filter(s => !editTechData.pic.includes(s.id)).map(staff => (
-                                <option key={staff.id} value={staff.id}>{staff.name} ({staff.jabatan})</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Kebutuhan Alat</label>
-                            <textarea
-                              value={editTechData.needs}
-                              onChange={e => setEditTechData({ ...editTechData, needs: e.target.value })}
-                              className="w-full px-3 py-1.5 text-sm border rounded dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-                              rows={3}
-                              placeholder="Contoh: 2 Mic Wireless, Sound System, Kabel HDMI Panjang"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">PIC Bertugas:</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedBooking.techSupportPicName || '-'}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Kebutuhan Alat:</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white whitespace-pre-wrap">{selectedBooking.techSupportNeeds || '-'}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Dokumen Section */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-100 dark:border-blue-800 flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center mr-3">
-                    <FileText className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Surat Permohonan.pdf</p>
-                    <p className="text-xs text-gray-500">Dokumen PDF</p>
-                  </div>
-                </div>
-                {selectedBooking.proposalFile && (
-                  <button
-                    onClick={(e) => handleViewFile(e, selectedBooking.proposalFile!)}
-                    className="px-3 py-1.5 bg-white dark:bg-gray-800 text-blue-600 text-xs font-bold rounded border border-blue-200 dark:border-blue-700 shadow-sm hover:bg-gray-50 flex items-center"
-                  >
-                    <Download className="w-3 h-3 mr-1.5" /> Buka File
-                  </button>
-                )}
-              </div>
-
-              {/* Hidden Ticket for Image Generation */}
-              <div className="absolute -left-[9999px] top-0">
-                <div ref={ticketRef} className="w-[600px] bg-white p-8 border border-gray-200 rounded-xl font-sans">
-                  <div className="flex items-center justify-between border-b-2 border-gray-800 pb-4 mb-6">
-                    <div className="flex items-center gap-4">
-                      <img src={nocLogo} alt="Logo" className="w-16 h-16 object-contain" />
-                      <div>
-                        <h1 className="text-2xl font-bold text-gray-900">CORE.FTI</h1>
-                        <p className="text-sm text-gray-600">Fakultas Teknologi Informasi - UKSW</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold border border-green-200">APPROVED</span>
-                    </div>
-                  </div>
-                  <div className="space-y-6">
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                      <h2 className="text-lg font-bold text-gray-800 mb-1">{selectedBooking.purpose}</h2>
-                      <p className="text-sm text-gray-600">Peminjam: {selectedBooking.userName} ({selectedBooking.userId})</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Ruangan</p>
-                        <p className="text-lg font-medium text-gray-900">{getRoomName(selectedBooking.roomId)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Waktu</p>
-                        <p className="text-lg font-medium text-gray-900">{selectedBooking.date}</p>
-                        <p className="text-md text-gray-700">{selectedBooking.startTime} - {selectedBooking.endTime}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Penanggung Jawab</p>
-                        <p className="text-md font-medium text-gray-900">{selectedBooking.responsiblePerson}</p>
-                        <p className="text-sm text-gray-600">{selectedBooking.contactPerson}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Technical Support</p>
-                        <p className="text-md font-medium text-gray-900">{selectedBooking.techSupportPicName || '-'}</p>
-                      </div>
-                    </div>
-                    <div className="border-t border-gray-200 pt-4 mt-4">
-                      <p className="text-xs text-gray-500 uppercase font-bold mb-1">Catatan Kebutuhan</p>
-                      <p className="text-sm text-gray-700 italic">{selectedBooking.techSupportNeeds || 'Tidak ada kebutuhan khusus.'}</p>
-                    </div>
-                  </div>
-                </div>)
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-700/50">
-              <button
-                onClick={() => setSelectedBooking(null)}
-                className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg transition-colors"
-              >
-                Tutup
-              </button>
-
-              {selectedBooking.status === BookingStatus.APPROVED && (
-                <>
-                  <button
-                    onClick={handleShareImage}
-                    className="px-4 py-2 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center transition-colors"
-                  >
-                    <Share2 className="w-4 h-4 mr-2" /> Share Gambar
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCalendarClick(selectedBooking)}
-                    className="px-4 py-2 text-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg flex items-center transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" /> Hapus Calendar
-                  </button>
-                  <button
-                    onClick={() => { setSelectedBooking(null); handleRejectClick(selectedBooking); }}
-                    className="px-4 py-2 text-sm bg-white text-red-600 border border-red-200 hover:bg-red-50 rounded-lg flex items-center shadow-sm transition-colors"
-                  >
-                    <AlertTriangle className="w-4 h-4 mr-2" />
-                    Batalkan
-                  </button>
-                  <button
-                    onClick={() => { setSelectedBooking(null); handleDeleteClick(selectedBooking); }}
-                    className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 border border-red-600 rounded-lg flex items-center shadow-sm transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Hapus Data
-                  </button>
-                </>
-              )}
-
-              {selectedBooking.status === BookingStatus.PENDING && (
-                <>
-                  <button
-                    onClick={() => { setSelectedBooking(null); handleRejectClick(selectedBooking); }}
-                    disabled={processingId === selectedBooking.id}
-                    className="px-4 py-2 text-sm bg-white text-red-600 border border-red-200 hover:bg-red-50 rounded-lg flex items-center shadow-sm transition-colors disabled:opacity-50"
-                  >
-                    {processingId === selectedBooking.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
-                    Tolak
-                  </button>
-                  <button
-                    onClick={() => { setSelectedBooking(null); handleApproveClick(selectedBooking); }}
-                    disabled={processingId === selectedBooking.id}
-                    className="px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg flex items-center shadow-md transition-colors disabled:opacity-50"
-                  >
-                    {processingId === selectedBooking.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                    Setuju Peminjaman
-                  </button>
-                </>
-              )}
-
-              {selectedBooking.status === BookingStatus.REJECTED && (
-                <button
-                  onClick={() => { setSelectedBooking(null); handleDeleteClick(selectedBooking); }}
-                  className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 border border-red-600 rounded-lg flex items-center shadow-sm transition-colors"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Hapus Data
-                </button>
-              )}
-
-              {selectedBooking.status !== BookingStatus.PENDING && (
-                <span className={`px-4 py-2 rounded-lg text-sm font-medium border flex items-center 
-                  ${selectedBooking.status === BookingStatus.APPROVED ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                  Status: {selectedBooking.status}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <BookingDetailModal
+        isOpen={selectedBooking !== null}
+        selectedBooking={selectedBooking}
+        setSelectedBooking={setSelectedBooking}
+        rooms={rooms}
+        staffList={staffList}
+        isEditingTech={isEditingTech}
+        setIsEditingTech={setIsEditingTech}
+        editTechData={editTechData}
+        setEditTechData={setEditTechData}
+        handleSaveTechData={handleSaveTechData}
+        handleViewFile={handleViewFile}
+        handleShareImage={handleShareImage}
+        handleRejectClick={handleRejectClick}
+        handleDeleteClick={handleDeleteClick}
+        handleApproveClick={handleApproveClick}
+        processingId={processingId}
+        ticketRef={ticketRef}
+      />
 
       {/* Approval Confirmation Modal */}
       <ApprovalModal 
@@ -910,19 +618,10 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
         rooms={rooms} 
         rejectionReason={rejectionReason} 
         setRejectionReason={setRejectionReason} 
+        deleteOption={deleteOption}
+        setDeleteOption={setDeleteOption}
         onClose={() => setIsRejectionModalOpen(false)} 
         onConfirm={handleConfirmRejection} 
-      />
-
-      {/* Delete Google Calendar Confirmation Modal */}
-      <DeleteCalendarModal 
-        isOpen={isDeleteCalendarModalOpen} 
-        booking={bookingToDeleteCalendar} 
-        deleteOption={deleteOption} 
-        setDeleteOption={setDeleteOption} 
-        isDeleting={isDeleting} 
-        onClose={() => setIsDeleteCalendarModalOpen(false)} 
-        onConfirm={handleConfirmDeleteCalendar} 
       />
 
       {/* Delete Booking Confirmation Modal */}
@@ -931,6 +630,8 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
         booking={bookingToDelete} 
         rooms={rooms} 
         isDeleting={isDeleting} 
+        deleteOption={deleteOption}
+        setDeleteOption={setDeleteOption}
         onClose={() => setIsDeleteModalOpen(false)} 
         onConfirm={handleConfirmDelete} 
       />
@@ -963,180 +664,3 @@ const PesananRuang: React.FC<ManageBookingsProps> = ({ addNotification, showToas
 };
 
 export default PesananRuang;
-
-// --- SUB-COMPONENTS FOR MODALS ---
-
-const ApprovalModal = ({ isOpen, booking, rooms, staffList, approvalData, setApprovalData, onClose, onConfirm }: any) => {
-  if (!isOpen || !booking) return null;
-  const getRoomName = (roomId: string) => rooms.find((r: Room) => r.id === roomId)?.name || 'Ruangan Tidak Diketahui';
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
-          <h3 className="font-bold text-green-800 dark:text-green-400 flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" /> Setuju Peminjaman
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Anda akan menyetujui peminjaman ruangan <strong>{getRoomName(booking.roomId)}</strong> untuk kegiatan <strong>{booking.purpose}</strong>.
-          </p>
-          <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 space-y-3">
-            <h4 className="text-xs font-bold text-gray-500 uppercase flex items-center"><Wrench className="w-3 h-3 mr-1" /> Data Technical Support (Opsional)</h4>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">PIC Laboran / Teknisi</label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {approvalData.pic.map((picId: string) => {
-                  const staff = staffList.find((s: LabStaff) => s.id === picId);
-                  return (
-                    <span key={picId} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                      {staff?.name}
-                      <button type="button" onClick={() => setApprovalData((prev: any) => ({ ...prev, pic: prev.pic.filter((id: string) => id !== picId) }))} className="ml-1 text-blue-600 hover:text-blue-800">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-              <select
-                value=""
-                onChange={e => { if (e.target.value) setApprovalData((prev: any) => ({ ...prev, pic: [...prev.pic, e.target.value] })) }}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
-              >
-                <option value="">+ Tambah PIC</option>
-                {staffList.filter((s: LabStaff) => !approvalData.pic.includes(s.id)).map((staff: LabStaff) => (
-                  <option key={staff.id} value={staff.id}>{staff.name} ({staff.jabatan})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kebutuhan Teknis (Mic, Sound, dll)</label>
-              <textarea
-                value={approvalData.needs}
-                onChange={e => setApprovalData({ ...approvalData, needs: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
-                rows={3}
-                placeholder="Daftar alat yang dibutuhkan..."
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
-            <button onClick={onConfirm} className="px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg shadow-md">Simpan & Setuju</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const RejectionModal = ({ isOpen, booking, rooms, rejectionReason, setRejectionReason, onClose, onConfirm }: any) => {
-  if (!isOpen || !booking) return null;
-  const getRoomName = (roomId: string) => rooms.find((r: Room) => r.id === roomId)?.name || 'Ruangan Tidak Diketahui';
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20">
-          <h3 className="font-bold text-red-800 dark:text-red-400 flex items-center">
-            {booking.status === BookingStatus.APPROVED ? <AlertTriangle className="w-5 h-5 mr-2" /> : <XCircle className="w-5 h-5 mr-2" />}
-            <span>{booking.status === BookingStatus.APPROVED ? 'Batalkan Peminjaman' : 'Tolak Peminjaman'}</span>
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Anda akan {booking.status === BookingStatus.APPROVED ? 'membatalkan' : 'menolak'} peminjaman ruangan <strong>{getRoomName(booking.roomId)}</strong>. Mohon berikan alasan {booking.status === BookingStatus.APPROVED ? 'pembatalan' : 'penolakan'} untuk peminjam.
-          </p>
-          <textarea
-            value={rejectionReason}
-            onChange={(e) => setRejectionReason(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm focus:ring-2 focus:ring-red-500"
-            rows={3}
-            placeholder="Contoh: Ruangan sedang dalam perbaikan, Jadwal bentrok dengan kegiatan fakultas..."
-            autoFocus
-          />
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
-            <button onClick={onConfirm} className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md">
-              Simpan & {booking.status === BookingStatus.APPROVED ? 'Batalkan' : 'Tolak'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DeleteCalendarModal = ({ isOpen, booking, deleteOption, setDeleteOption, isDeleting, onClose, onConfirm }: any) => {
-  if (!isOpen || !booking) return null;
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20">
-          <h3 className="font-bold text-red-800 dark:text-red-400 flex items-center">
-            <Trash2 className="w-5 h-5 mr-2" /> Hapus dari Google Calendar
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Pilih bagaimana ingin menghapus event <strong>"{booking.purpose}"</strong> dari Google Calendar:
-          </p>
-          <div className="space-y-2">
-            {(['single', 'thisAndFollowing', 'all'] as const).map((opt) => (
-              <label key={opt} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === opt ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                <input type="radio" name="deleteOption" value={opt} checked={deleteOption === opt} onChange={() => setDeleteOption(opt)} className="mr-3" />
-                <div>
-                  {opt === 'single' && <><p className="text-sm font-medium text-gray-900 dark:text-white">Hapus event ini saja</p><p className="text-xs text-gray-500">Menghapus hanya event pada tanggal {booking.date}</p></>}
-                  {opt === 'thisAndFollowing' && <><p className="text-sm font-medium text-gray-900 dark:text-white">Ini dan event selanjutnya</p><p className="text-xs text-gray-500">Menghapus event ini dan semua event di tanggal yang sama</p></>}
-                  {opt === 'all' && <><p className="text-sm font-medium text-gray-900 dark:text-white">Semua event</p><p className="text-xs text-gray-500">Menghapus semua event yang cocok dengan kegiatan ini</p></>}
-                </div>
-              </label>
-            ))}
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
-            <button onClick={onConfirm} disabled={isDeleting} className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md flex items-center disabled:opacity-50">
-              {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />} Hapus dari Calendar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DeleteBookingModal = ({ isOpen, booking, rooms, isDeleting, onClose, onConfirm }: any) => {
-  if (!isOpen || !booking) return null;
-  const getRoomName = (roomId: string) => rooms.find((r: Room) => r.id === roomId)?.name || 'Ruangan Tidak Diketahui';
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20">
-          <h3 className="font-bold text-red-800 dark:text-red-400 flex items-center">
-            <Trash2 className="w-5 h-5 mr-2" /> Hapus Data Peminjaman
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">⚠️ Peringatan! Tindakan ini tidak dapat dibatalkan.</p>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-gray-300">Anda akan menghapus data peminjaman berikut secara permanen:</p>
-          <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 space-y-2">
-            <div className="flex justify-between"><span className="text-xs text-gray-500">Peminjam:</span><span className="text-sm font-medium text-gray-900 dark:text-white">{booking.userName}</span></div>
-            <div className="flex justify-between"><span className="text-xs text-gray-500">Ruangan:</span><span className="text-sm font-medium text-gray-900 dark:text-white">{getRoomName(booking.roomId)}</span></div>
-            <div className="flex justify-between"><span className="text-xs text-gray-500">Tanggal:</span><span className="text-sm font-medium text-gray-900 dark:text-white">{booking.date}</span></div>
-            <div className="flex justify-between"><span className="text-xs text-gray-500">Keperluan:</span><span className="text-sm font-medium text-gray-900 dark:text-white">{booking.purpose}</span></div>
-          </div>
-          {booking.status === BookingStatus.APPROVED && (
-            <p className="text-xs text-orange-600 dark:text-orange-400">* Jika peminjaman sudah disetujui, event di Google Calendar juga akan dihapus.</p>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
-            <button onClick={onConfirm} disabled={isDeleting} className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-md flex items-center disabled:opacity-50">
-              {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />} Hapus Permanen
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
