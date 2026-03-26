@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import express from 'express';
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -796,6 +796,47 @@ app.post('/api/check-user-exists', async (req, res) => {
   }
 });
 
+// Endpoint Ubah Password User (Dari Halaman Profile)
+app.put('/api/users/:id/change-password', verifyRole(['Admin', 'Laboran', 'User']), async (req, res) => {
+  const { id } = req.params;
+  const { currentPassword, newPassword } = req.body;
+
+  // Pastikan user hanya bisa mengubah passwordnya sendiri (kecuali admin)
+  if (req.user.id !== id && req.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Tidak diizinkan mengubah password user lain.' });
+  }
+
+  try {
+    // Ambil password saat ini dari DB
+    const userRes = await pool.query('SELECT password FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: 'User tidak ditemukan.' });
+
+    const user = userRes.rows[0];
+
+    // Verifikasi password lama
+    if (user.password !== null) {
+      const match = await bcrypt.compare(currentPassword, user.password);
+      if (!match) {
+        return res.status(400).json({ error: 'Password saat ini salah.' });
+      }
+    }
+
+    // Hash password baru dan update ke DB beserta tanggal perubahannya
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    await pool.query(
+      'UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2',
+      [hashedPassword, id]
+    );
+
+    res.json({ success: true, message: 'Password berhasil diubah.' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Gagal mengubah password.' });
+  }
+});
+
 // Endpoint Register (Buat Akun Baru)
 app.post('/api/register', 
   // --- 6. Input Validation ---
@@ -1186,7 +1227,9 @@ app.get('/api/class-schedules', async (req, res) => {
       academicYear: row.academic_year,
       roomId: row.room_id,
       roomName: row.room_name,
-      lecturerName: row.lecturer_name
+      lecturerName: row.lecturer_name,
+      startDate: row.start_date ? new Date(row.start_date).toLocaleDateString('en-CA') : '',
+      endDate: row.end_date ? new Date(row.end_date).toLocaleDateString('en-CA') : ''
     }));
     
     res.json(schedules);
@@ -1198,15 +1241,15 @@ app.get('/api/class-schedules', async (req, res) => {
 
 // Add New Class Schedule
 app.post('/api/class-schedules', async (req, res) => {
-  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName } = req.body;
+  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName, startDate, endDate } = req.body;
   
   try {
     const id = `CLASS-${Date.now()}`;
     
     await pool.query(
-      `INSERT INTO class_schedules (id, course_code, course_name, class_group, day_of_week, start_time, end_time, semester, academic_year, room_id, lecturer_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [id, courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null]
+      `INSERT INTO class_schedules (id, course_code, course_name, class_group, day_of_week, start_time, end_time, semester, academic_year, room_id, lecturer_name, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [id, courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null, startDate || null, endDate || null]
     );
     
     res.json({ success: true, id });
@@ -1219,12 +1262,12 @@ app.post('/api/class-schedules', async (req, res) => {
 // Update Class Schedule
 app.put('/api/class-schedules/:id', async (req, res) => {
   const { id } = req.params;
-  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName } = req.body;
+  const { courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId, lecturerName, startDate, endDate } = req.body;
   
   try {
     await pool.query(
-      `UPDATE class_schedules SET course_code = $1, course_name = $2, class_group = $3, day_of_week = $4, start_time = $5, end_time = $6, semester = $7, academic_year = $8, room_id = $9, lecturer_name = $10, updated_at = CURRENT_TIMESTAMP WHERE id = $11`,
-      [courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null, id]
+      `UPDATE class_schedules SET course_code = $1, course_name = $2, class_group = $3, day_of_week = $4, start_time = $5, end_time = $6, semester = $7, academic_year = $8, room_id = $9, lecturer_name = $10, start_date = $11, end_date = $12, updated_at = CURRENT_TIMESTAMP WHERE id = $13`,
+      [courseCode, courseName, classGroup, dayOfWeek, startTime, endTime, semester, academicYear, roomId || null, lecturerName || null, startDate || null, endDate || null, id]
     );
     
     res.json({ success: true });

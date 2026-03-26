@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Role } from '../types';
-import { User, Mail, Phone, Shield, Save, Lock, Building, CreditCard, X, KeyRound, Camera, Calendar, Clock, Activity, Bell } from 'lucide-react';
+import { User, Mail, Phone, Shield, Save, Lock, Building, CreditCard, X, KeyRound, Camera, Calendar, Clock, Activity, Bell, Package } from 'lucide-react';
 import { api } from '../services/api';
 import Cropper from 'react-easy-crop';
 
@@ -43,6 +43,7 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<string> 
 interface ProfileProps {
   role: Role;
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface UserStats {
@@ -55,7 +56,7 @@ interface UserStats {
   unreadNotifications: number;
 }
 
-const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
+const Profile: React.FC<ProfileProps> = ({ role, showToast, onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [userData, setUserData] = useState({
     id: '',
@@ -221,7 +222,7 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
     }
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
       showToast("Mohon lengkapi semua field password.", "warning");
@@ -231,20 +232,45 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
       showToast("Password baru dan konfirmasi tidak cocok!", "error");
       return;
     }
-    showToast("Password berhasil diubah!", "success");
-    setIsChangePasswordOpen(false);
-    setPasswordForm({ current: '', new: '', confirm: '' });
+
+    try {
+      const res = await api(`/api/users/${userData.id}/change-password`, {
+        method: 'PUT',
+        data: {
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.new
+        }
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        showToast("Password berhasil diubah!", "success");
+        setIsChangePasswordOpen(false);
+        setPasswordForm({ current: '', new: '', confirm: '' });
+        
+        // Update tanggal "Ubah Sandi" pada statistik tampilan secara realtime
+        setStats(prev => ({
+          ...prev,
+          passwordChanged: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+        }));
+      } else {
+        showToast(data.error || "Gagal mengubah password.", "error");
+      }
+    } catch (error) {
+      showToast("Terjadi kesalahan saat mengubah password.", "error");
+    }
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header / Cover */}
       <div className="relative rounded-xl overflow-hidden bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700">
-        <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+        <div className="h-40 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-90"></div>
         <div className="px-6 pb-6">
-          <div className="relative flex items-end -mt-12 mb-4">
+          <div className="relative flex flex-col sm:flex-row sm:items-end -mt-16 mb-4">
             <div className="relative group" onClick={() => isEditing && fileInputRef.current?.click()}>
-              <img src={userData.avatar} alt="Profile" className={`w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-md bg-white object-cover ${isEditing ? 'cursor-pointer' : ''}`} />
+              <img src={userData.avatar} alt="Profile" className={`w-32 h-32 rounded-full border-4 border-white dark:border-gray-800 shadow-lg bg-white object-cover ${isEditing ? 'cursor-pointer ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800' : ''}`} />
               {isEditing && (
                 <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
                   <Camera className="w-8 h-8 text-white" />
@@ -258,25 +284,25 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
                 onChange={handleImageUpload}
               />
             </div>
-            <div className="ml-4 mb-1">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{userData.name}</h1>
+            <div className="mt-4 sm:mt-0 sm:ml-5 mb-1 flex-1">
+              <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">{userData.name}</h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm flex items-center">
                 <span className="mr-2 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">@{userData.username || '-'}</span>
-                <Shield className="w-3 h-3 mr-1 text-blue-500" /> {role}
+                <Shield className="w-4 h-4 mr-1 text-blue-500" /> {role}
               </p>
             </div>
-            <div className="ml-auto mb-2 hidden sm:block">
+            <div className="mt-4 sm:mt-0 ml-auto mb-2 w-full sm:w-auto">
               {!isEditing ? (
                 <button 
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
                 >
                   Edit Profil
                 </button>
               ) : (
                 <button 
                   onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium mr-2"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 >
                   Batal
                 </button>
@@ -377,6 +403,90 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
               </div>
             </form>
           </div>
+
+          {/* Dynamic Account Info (Dipindah ke kolom kiri agar layout seimbang) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Informasi & Statistik Akun</h2>
+            {isLoadingStats ? (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Status Akun */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-600/50 flex flex-col justify-center">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg mr-3">
+                      <Activity className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status Akun</p>
+                  </div>
+                  <span className="inline-flex items-center w-fit px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400 shadow-sm border border-green-200 dark:border-green-800">
+                    {stats.status}
+                  </span>
+                </div>
+                
+                {/* Terakhir Login */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-600/50 flex flex-col justify-center">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg mr-3">
+                      <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Login Terakhir</p>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.lastLogin}</p>
+                </div>
+                
+                {/* Terakhir Password Diubah */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-600/50 flex flex-col justify-center">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg mr-3">
+                      <KeyRound className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    </div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ubah Sandi</p>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.passwordChanged}</p>
+                </div>
+                
+                {/* Anggota Sejak */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-600/50 flex flex-col justify-center">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg mr-3">
+                      <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Anggota Sejak</p>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.memberSince}</p>
+                </div>
+
+                {/* Total Peminjaman Ruang */}
+                <div className="col-span-1 sm:col-span-2 lg:col-span-2 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-100 dark:border-orange-800/50 flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded-lg mr-3">
+                      <Building className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase mb-0.5">Peminjaman Ruang</p>
+                      <p className="text-xl font-bold text-orange-900 dark:text-orange-100">{stats.totalBookings} <span className="text-sm font-normal opacity-80">kali</span></p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Total Peminjaman Barang */}
+                <div className="col-span-1 sm:col-span-2 lg:col-span-2 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800/50 flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg mr-3">
+                      <Package className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 uppercase mb-0.5">Peminjaman Barang</p>
+                      <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">{stats.totalLoans} <span className="text-sm font-normal opacity-80">item</span></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Settings */}
@@ -402,91 +512,31 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast }) => {
             </div>
           </div>
 
-          {/* Dynamic Account Info */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Informasi Akun</h2>
-            {isLoadingStats ? (
-              <div className="flex justify-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Status Akun */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center">
-                    <Activity className="w-5 h-5 text-green-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Status Akun</p>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                        {stats.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Terakhir Login */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center">
-                    <Clock className="w-5 h-5 text-blue-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Terakhir Login</p>
-                      <p className="text-xs text-gray-500">{stats.lastLogin}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Terakhir Password Diubah */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center">
-                    <KeyRound className="w-5 h-5 text-red-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Terakhir Password Diubah</p>
-                      <p className="text-xs text-gray-500">{stats.passwordChanged}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Anggota Sejak */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center">
-                    <Calendar className="w-5 h-5 text-purple-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Anggota Sejak</p>
-                      <p className="text-xs text-gray-500">{stats.memberSince}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Peminjaman */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <div className="flex items-center">
-                    <Building className="w-5 h-5 text-orange-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">Total Peminjaman</p>
-                      <p className="text-xs text-gray-500">{stats.totalBookings} peminjaman ruangan</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          
           {/* Quick Actions */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Aksi Cepat</h2>
             <div className="space-y-3">
-              <button className="w-full flex items-center p-3 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors group">
+              <button 
+                onClick={() => onNavigate?.('dashboard')}
+                className="w-full flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-all hover:scale-[1.02] group"
+              >
                 <Bell className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3" />
                 <span className="text-sm font-medium text-blue-900 dark:text-blue-300 group-hover:text-blue-700 dark:group-hover:text-blue-200">Notifikasi</span>
                 {stats.unreadNotifications > 0 && (
                   <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{stats.unreadNotifications}</span>
                 )}
               </button>
-              <button className="w-full flex items-center p-3 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors group">
+              <button 
+                onClick={() => onNavigate?.('bookings')}
+                className="w-full flex items-center p-4 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-xl transition-all hover:scale-[1.02] group"
+              >
                 <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400 mr-3" />
                 <span className="text-sm font-medium text-purple-900 dark:text-purple-300 group-hover:text-purple-700 dark:group-hover:text-purple-200">Riwayat Peminjaman</span>
               </button>
-              <button className="w-full flex items-center p-3 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg transition-colors group">
+              <button 
+                onClick={() => onNavigate?.('rooms')}
+                className="w-full flex items-center p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-xl transition-all hover:scale-[1.02] group"
+              >
                 <Building className="w-5 h-5 text-green-600 dark:text-green-400 mr-3" />
                 <span className="text-sm font-medium text-green-900 dark:text-green-300 group-hover:text-green-700 dark:group-hover:text-green-200">Ruangan Favorit</span>
               </button>

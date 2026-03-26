@@ -300,6 +300,8 @@ CREATE TABLE class_schedules (
     academic_year VARCHAR(20) NOT NULL,     -- Tahun Akademik (2024/2025)
     room_id VARCHAR(50),
     lecturer_name VARCHAR(100),             -- Nama Dosen Pengampu
+    start_date DATE,                        -- Tanggal Mulai Periode Semester
+    end_date DATE,                          -- Tanggal Selesai Periode Semester
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_class_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL

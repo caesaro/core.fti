@@ -37,7 +37,7 @@ const Tentang: React.FC = () => {
             <div className="md:w-1/3 flex flex-col items-center justify-center">
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 text-center w-full">
                 <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-1">CORE.FTI</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">Versi 1.0.0</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">Versi 1.5.3</div>
                 <div className="mt-3 inline-flex items-center px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-sm font-medium">
                   <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
                   Sistem Aktif

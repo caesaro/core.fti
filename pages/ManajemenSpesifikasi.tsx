@@ -46,6 +46,8 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
   const [softwareList, setSoftwareList] = useState<Software[]>([]);
   const [editingSoftware, setEditingSoftware] = useState<Partial<Software> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Modal States
   const [confirmModal, setConfirmModal] = useState({
@@ -185,28 +187,44 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
 
   const handleDownloadTemplate = async () => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Template Komputer');
-    worksheet.columns = [
-      { header: 'No PC', key: 'pcNumber', width: 10 },
-      { header: 'OS', key: 'os', width: 15 },
-      { header: 'CPU', key: 'cpu', width: 25 },
-      { header: 'Tipe GPU', key: 'gpuType', width: 25 },
-      { header: 'Model GPU', key: 'gpuModel', width: 20 },
-      { header: 'VRAM', key: 'vram', width: 10 },
-      { header: 'RAM', key: 'ram', width: 10 },
-      { header: 'Storage', key: 'storage', width: 25 },
-      { header: 'Monitor', key: 'monitor', width: 20 },
-      { header: 'Keyboard', key: 'keyboard', width: 20 },
-      { header: 'Mouse', key: 'mouse', width: 20 },
-      { header: 'Kondisi', key: 'condition', width: 15 },
-    ];
-    worksheet.addRow({ pcNumber: 'PC-01', os: 'Windows 11', cpu: 'Intel Core i5-12400', gpuType: 'Integrated', gpuModel: 'Intel UHD 730', vram: '-', ram: '16GB', storage: 'SSD 512GB', monitor: 'Dell 24"', keyboard: 'Logitech', mouse: 'Logitech', condition: 'Baik' });
+    
+    if (activeTab === 'computers') {
+      const worksheet = workbook.addWorksheet('Template Komputer');
+      worksheet.columns = [
+        { header: 'No PC', key: 'pcNumber', width: 10 },
+        { header: 'OS', key: 'os', width: 15 },
+        { header: 'CPU', key: 'cpu', width: 25 },
+        { header: 'Tipe GPU', key: 'gpuType', width: 25 },
+        { header: 'Model GPU', key: 'gpuModel', width: 20 },
+        { header: 'VRAM', key: 'vram', width: 10 },
+        { header: 'RAM', key: 'ram', width: 10 },
+        { header: 'Storage', key: 'storage', width: 25 },
+        { header: 'Monitor', key: 'monitor', width: 20 },
+        { header: 'Keyboard', key: 'keyboard', width: 20 },
+        { header: 'Mouse', key: 'mouse', width: 20 },
+        { header: 'Kondisi', key: 'condition', width: 15 },
+      ];
+      worksheet.addRow({ pcNumber: 'PC-01', os: 'Windows 11', cpu: 'Intel Core i5-12400', gpuType: 'Integrated', gpuModel: 'Intel UHD 730', vram: '-', ram: '16GB', storage: 'SSD 512GB', monitor: 'Dell 24"', keyboard: 'Logitech', mouse: 'Logitech', condition: 'Baik' });
+    } else {
+      const worksheet = workbook.addWorksheet('Template Software');
+      worksheet.columns = [
+        { header: 'Nama Software', key: 'name', width: 30 },
+        { header: 'Versi', key: 'version', width: 15 },
+        { header: 'Kategori', key: 'category', width: 20 },
+        { header: 'Tipe Lisensi', key: 'licenseType', width: 15 },
+        { header: 'Vendor', key: 'vendor', width: 20 },
+        { header: 'Tanggal Install', key: 'installDate', width: 15 },
+        { header: 'Catatan', key: 'notes', width: 30 },
+      ];
+      worksheet.addRow({ name: 'Microsoft Office', version: '2021', category: 'Office', licenseType: 'Commercial', vendor: 'Microsoft', installDate: '2024-01-01', notes: '-' });
+    }
+    
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'template_data_komputer.xlsx';
+    a.download = activeTab === 'computers' ? 'template_data_komputer.xlsx' : 'template_data_software.xlsx';
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -214,6 +232,8 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
   const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedRoom) return;
+    
+    setIsImporting(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
       const buffer = event.target?.result as ArrayBuffer;
@@ -226,99 +246,181 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
             return;
         }
         const promises: Promise<any>[] = [];
-        worksheet.eachRow((row, rowNumber) => {
-          if (rowNumber === 1) return;
-          const pcNumber = row.getCell(1).text;
-          if (!pcNumber) return;
-          const payload = {
-            id: `PC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            roomId: selectedRoom.id,
-            pcNumber: pcNumber,
-            os: row.getCell(2).text,
-            cpu: row.getCell(3).text,
-            gpuType: row.getCell(4).text || 'Integrated',
-            gpuModel: row.getCell(5).text,
-            vram: row.getCell(6).text,
-            ram: row.getCell(7).text,
-            storage: row.getCell(8).text,
-            monitor: row.getCell(9).text,
-            keyboard: row.getCell(10).text,
-            mouse: row.getCell(11).text,
-            condition: row.getCell(12).text || 'Baik',
-          };
-          promises.push(api('/api/computers', { method: 'POST', data: payload }));
-        });
-        await Promise.all(promises);
-        showToast("Berhasil import komputer", "success");
-        fetchRoomComputers();
-        fetchRooms(); // Update jumlah komputer pada card
+        
+        if (activeTab === 'computers') {
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            const pcNumber = row.getCell(1).text;
+            if (!pcNumber) return;
+            const payload = {
+              id: `PC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              roomId: selectedRoom.id,
+              pcNumber: pcNumber,
+              os: row.getCell(2).text,
+              cpu: row.getCell(3).text,
+              gpuType: row.getCell(4).text || 'Integrated',
+              gpuModel: row.getCell(5).text,
+              vram: row.getCell(6).text,
+              ram: row.getCell(7).text,
+              storage: row.getCell(8).text,
+              monitor: row.getCell(9).text,
+              keyboard: row.getCell(10).text,
+              mouse: row.getCell(11).text,
+              condition: row.getCell(12).text || 'Baik',
+            };
+            promises.push(api('/api/computers', { method: 'POST', data: payload }));
+          });
+          await Promise.all(promises);
+          showToast("Berhasil import komputer", "success");
+          fetchRoomComputers();
+          fetchRooms(); // Update jumlah komputer pada card
+        } else if (activeTab === 'software') {
+          let addedCount = 0;
+          let duplicateCount = 0;
+          const existingSoftware = new Set(softwareList.map(s => `${s.name}-${s.version || ''}`.toLowerCase().trim()));
+
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            const name = row.getCell(1).text?.trim();
+            const version = row.getCell(2).text?.trim() || '';
+
+            if (!name) return;
+            
+            const key = `${name}-${version}`.toLowerCase();
+            if (existingSoftware.has(key)) {
+              duplicateCount++;
+              return;
+            }
+            existingSoftware.add(key);
+            addedCount++;
+
+            let installDateStr = row.getCell(6).text;
+            const installDateVal = row.getCell(6).value;
+            if (installDateVal instanceof Date) {
+              const yyyy = installDateVal.getFullYear();
+              const mm = String(installDateVal.getMonth() + 1).padStart(2, '0');
+              const dd = String(installDateVal.getDate()).padStart(2, '0');
+              installDateStr = `${yyyy}-${mm}-${dd}`;
+            }
+
+            const payload = {
+              roomId: selectedRoom.id,
+              name: name,
+              version: version,
+              category: row.getCell(3).text,
+              licenseType: row.getCell(4).text || 'Free',
+              vendor: row.getCell(5).text,
+              installDate: installDateStr,
+              notes: row.getCell(7).text,
+            };
+            promises.push(api('/api/software', { method: 'POST', data: payload }));
+          });
+
+          if (promises.length > 0) {
+            await Promise.all(promises);
+            fetchSoftware();
+          }
+          
+          if (addedCount > 0 && duplicateCount > 0) {
+            showToast(`Berhasil import ${addedCount} software. Diabaikan ${duplicateCount} duplikat.`, "warning");
+          } else if (addedCount > 0) {
+            showToast(`Berhasil import ${addedCount} software`, "success");
+          } else if (duplicateCount > 0) {
+            showToast(`Semua software (${duplicateCount}) sudah ada (duplikat diabaikan).`, "info");
+          } else {
+            showToast("Tidak ada data valid yang diimport.", "warning");
+          }
+        }
       } catch (error) { 
         console.error(error);
         showToast("Gagal process Excel", "error"); 
+      } finally {
+        setIsImporting(false);
       }
     };
+    reader.onerror = () => {
+      setIsImporting(false);
+      showToast("Gagal membaca file Excel", "error");
+    };
     reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   const handleExportComputers = async () => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet(`Komputer ${selectedRoom?.name}`);
+    setIsExporting(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(`Komputer ${selectedRoom?.name}`);
 
-    worksheet.columns = [
-      { header: 'No PC', key: 'pcNumber', width: 10 },
-      { header: 'OS', key: 'os', width: 20 },
-      { header: 'CPU', key: 'cpu', width: 30 },
-      { header: 'Tipe GPU', key: 'gpuType', width: 15 },
-      { header: 'Model GPU', key: 'gpuModel', width: 25 },
-      { header: 'VRAM', key: 'vram', width: 10 },
-      { header: 'RAM', key: 'ram', width: 15 },
-      { header: 'Storage', key: 'storage', width: 25 },
-      { header: 'Monitor', key: 'monitor', width: 20 },
-      { header: 'Keyboard', key: 'keyboard', width: 20 },
-      { header: 'Mouse', key: 'mouse', width: 20 },
-      { header: 'Kondisi', key: 'condition', width: 15 },
-    ];
+      worksheet.columns = [
+        { header: 'No PC', key: 'pcNumber', width: 10 },
+        { header: 'OS', key: 'os', width: 20 },
+        { header: 'CPU', key: 'cpu', width: 30 },
+        { header: 'Tipe GPU', key: 'gpuType', width: 15 },
+        { header: 'Model GPU', key: 'gpuModel', width: 25 },
+        { header: 'VRAM', key: 'vram', width: 10 },
+        { header: 'RAM', key: 'ram', width: 15 },
+        { header: 'Storage', key: 'storage', width: 25 },
+        { header: 'Monitor', key: 'monitor', width: 20 },
+        { header: 'Keyboard', key: 'keyboard', width: 20 },
+        { header: 'Mouse', key: 'mouse', width: 20 },
+        { header: 'Kondisi', key: 'condition', width: 15 },
+      ];
 
-    filteredComputers.forEach(pc => worksheet.addRow(pc));
-    worksheet.getRow(1).font = { bold: true };
+      filteredComputers.forEach(pc => worksheet.addRow(pc));
+      worksheet.getRow(1).font = { bold: true };
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `spek_komputer_${selectedRoom?.name.replace(/\s/g, '_')}.xlsx`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    showToast("Data komputer berhasil diexport!", "success");
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `spek_komputer_${selectedRoom?.name.replace(/\s/g, '_')}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      showToast("Data komputer berhasil diexport!", "success");
+    } catch (error) {
+      console.error("Export error:", error);
+      showToast("Gagal mengekspor data.", "error");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleExportSoftware = async () => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet(`Software ${selectedRoom?.name}`);
+    setIsExporting(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(`Software ${selectedRoom?.name}`);
 
-    worksheet.columns = [
-      { header: 'Nama Software', key: 'name', width: 30 },
-      { header: 'Versi', key: 'version', width: 15 },
-      { header: 'Kategori', key: 'category', width: 20 },
-      { header: 'Tipe Lisensi', key: 'licenseType', width: 15 },
-      { header: 'Vendor', key: 'vendor', width: 20 },
-      { header: 'Tanggal Install', key: 'installDate', width: 15 },
-      { header: 'Catatan', key: 'notes', width: 30 },
-    ];
+      worksheet.columns = [
+        { header: 'Nama Software', key: 'name', width: 30 },
+        { header: 'Versi', key: 'version', width: 15 },
+        { header: 'Kategori', key: 'category', width: 20 },
+        { header: 'Tipe Lisensi', key: 'licenseType', width: 15 },
+        { header: 'Vendor', key: 'vendor', width: 20 },
+        { header: 'Tanggal Install', key: 'installDate', width: 15 },
+        { header: 'Catatan', key: 'notes', width: 30 },
+      ];
 
-    filteredSoftware.forEach(soft => worksheet.addRow(soft));
-    worksheet.getRow(1).font = { bold: true };
+      filteredSoftware.forEach(soft => worksheet.addRow(soft));
+      worksheet.getRow(1).font = { bold: true };
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `software_${selectedRoom?.name.replace(/\s/g, '_')}.xlsx`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    showToast("Data software berhasil diexport!", "success");
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `software_${selectedRoom?.name.replace(/\s/g, '_')}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      showToast("Data software berhasil diexport!", "success");
+    } catch (error) {
+      console.error("Export error:", error);
+      showToast("Gagal mengekspor data.", "error");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // --- SOFTWARE HANDLERS ---
@@ -456,16 +558,28 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         </div>
         {canManage && (
           <div className="flex gap-2">
-            <button onClick={handleDownloadTemplate} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center">
+            <button onClick={handleDownloadTemplate} disabled={isImporting || isExporting} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
               <Download className="w-4 h-4 mr-2" /> Template
             </button>
-            <button onClick={activeTab === 'computers' ? handleExportComputers : handleExportSoftware} className="px-3 py-2 bg-green-700 text-white rounded-lg text-sm hover:bg-green-800 flex items-center">
-              <FileSpreadsheet className="w-4 h-4 mr-2" /> Export
-            </button>
-            <label className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 flex items-center cursor-pointer">
-              <FileSpreadsheet className="w-4 h-4 mr-2" /> Import
-              <input type="file" accept=".xlsx" className="hidden" onChange={handleExcelUpload} />
-            </label>
+            {isExporting ? (
+              <button disabled className="px-3 py-2 bg-green-700 text-white rounded-lg text-sm flex items-center opacity-70 cursor-not-allowed">
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengekspor...
+              </button>
+            ) : (
+              <button onClick={activeTab === 'computers' ? handleExportComputers : handleExportSoftware} disabled={isImporting} className="px-3 py-2 bg-green-700 text-white rounded-lg text-sm hover:bg-green-800 flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
+                <FileSpreadsheet className="w-4 h-4 mr-2" /> Export
+              </button>
+            )}
+            {isImporting ? (
+              <button disabled className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm flex items-center opacity-70 cursor-not-allowed">
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengimport...
+              </button>
+            ) : (
+              <label className={`px-3 py-2 bg-blue-500 text-white rounded-lg text-sm flex items-center ${isExporting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 cursor-pointer'}`}>
+                <FileSpreadsheet className="w-4 h-4 mr-2" /> Import
+                <input type="file" accept=".xlsx" className="hidden" onChange={handleExcelUpload} disabled={isImporting || isExporting} />
+              </label>
+            )}
           </div>
         )}
       </div>
@@ -512,13 +626,15 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
           <div className="flex gap-2">
             <button 
               onClick={handleDeleteAllComputersClick}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+              disabled={isImporting || isExporting}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reset Semua
             </button>
             <button 
               onClick={() => setEditingComputer({ pcNumber: '', cpu: '', gpuType: 'Integrated', gpuModel: '', vram: '', ram: '', storage: '', os: '', keyboard: '', mouse: '', monitor: '', condition: 'Baik' })}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center"
+              disabled={isImporting || isExporting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4 mr-2" /> Tambah Komputer
             </button>
@@ -527,7 +643,8 @@ const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDar
         {canManage && activeTab === 'software' && (
           <button 
             onClick={() => setEditingSoftware({ name: '', version: '', licenseType: 'Free', category: '' })}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center"
+            disabled={isImporting || isExporting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4 mr-2" /> Tambah Software
           </button>

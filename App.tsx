@@ -342,7 +342,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           );
         case 'profile':
-          return <Profile role={currentRole} showToast={showToast} />;
+          return <Profile role={currentRole} showToast={showToast} onNavigate={setCurrentPage} />;
 case 'settings':
           return (
             <ProtectedRoute 

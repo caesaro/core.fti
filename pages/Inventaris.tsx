@@ -12,14 +12,86 @@ import { usePagination } from '../hooks/usePagination';
 import SearchBar from '../components/SearchBar';
 import Pagination from '../components/Pagination';
 
-const LabelComponent = ({ item, includeQR = true }: { item: Equipment; includeQR?: boolean }) => (
-    <div className={`px-1 flex flex-col items-center text-center break-words w-full h-full font-sans ${includeQR ? 'justify-start pt-1' : 'justify-center'}`}>
-        <p className={`text-gray-800 font-bold ${includeQR ? 'text-[5pt] mb-0.5 mt-0' : 'text-[7pt] mb-2 tracking-widest'}`}>CORE.FTI</p>
-        {includeQR && <QRCode value={item.id} size={40} level="M" style={{ height: "auto", maxWidth: "100%", width: "100%" }} />}
-        <p className={`font-extrabold tracking-tighter font-mono whitespace-nowrap overflow-hidden text-ellipsis w-full px-0.5 leading-none text-black ${includeQR ? 'text-[5.5pt] mt-1' : 'text-[8pt] mb-1'}`}>{item.id}</p>
-        <p className={`leading-tight text-gray-900 ${includeQR ? 'text-[4.5pt] mt-0.5 line-clamp-3' : 'text-[6pt] font-normal px-1 mt-1 line-clamp-4'}`}>{item.name}</p>
+const getLabelDimensions = (size: '4x2' | '5x3' | '8x6') => {
+    // Using a base DPI for high-quality PNG generation.
+    const DPI = 300;
+    const MM_TO_INCH = 0.0393701;
+    const convertMmToPx = (mm: number) => Math.round(mm * MM_TO_INCH * DPI);
+
+    switch (size) {
+        case '5x3': return { 
+            width: '50mm', height: '30mm', canvasWidth: convertMmToPx(50), canvasHeight: convertMmToPx(30),
+            qrSize: 128, qrMaxW: '18mm', qrMaxH: '18mm', 
+            headerFont: '18pt', idFont: '22pt', nameFont: '16pt',
+            cssHeaderFont: '7pt', cssIdFont: '8.5pt', cssNameFont: '6.5pt'
+        };
+        case '8x6': return { 
+            width: '80mm', height: '60mm', canvasWidth: convertMmToPx(80), canvasHeight: convertMmToPx(60),
+            qrSize: 256, qrMaxW: '38mm', qrMaxH: '38mm', 
+            headerFont: '32pt', idFont: '40pt', nameFont: '28pt',
+            cssHeaderFont: '14pt', cssIdFont: '16pt', cssNameFont: '12pt'
+        };
+        default: return { // 4x2
+            width: '40mm', height: '20mm', canvasWidth: convertMmToPx(40), canvasHeight: convertMmToPx(20),
+            qrSize: 64, qrMaxW: '12mm', qrMaxH: '12mm', 
+            headerFont: '12pt', idFont: '16pt', nameFont: '12pt',
+            cssHeaderFont: '5pt', cssIdFont: '6.5pt', cssNameFont: '5pt'
+        };
+    }
+};
+
+const LabelComponent = ({ 
+  item, 
+  includeQR = true, 
+  labelSize = '4x2' as '4x2' | '5x3' | '8x6'
+}: { 
+  item: Equipment; 
+  includeQR?: boolean;
+  labelSize?: '4x2' | '5x3' | '8x6';
+}) => {
+  const dims = getLabelDimensions(labelSize);
+
+  return (
+    <div 
+      className="w-full h-full flex flex-col items-center justify-center p-[0.5mm] font-[system-ui] text-center overflow-hidden bg-white border border-gray-200 print:border-transparent" 
+      style={{width: dims.width, height: dims.height, fontFamily: "'Roboto', 'Helvetica Neue', Arial, sans-serif"}}
+    >
+        {/* Header: branding */}
+        <div className="w-full text-center mb-[0.5mm]">
+            <p className={`text-[#4A5568] font-bold leading-none tracking-tight`} style={{fontSize: dims.cssHeaderFont}}>CORE.FTI</p>
+        </div>
+        
+        {/* QR Code - centered, high scannability */}
+        {includeQR && (
+            <div className="flex-1 flex items-center justify-center mb-[0.5mm]" style={{maxWidth: dims.qrMaxW, maxHeight: dims.qrMaxH}}>
+                <QRCode 
+                    value={item.id} 
+                    size={dims.qrSize} 
+                    level="M" 
+                    style={{ height: "auto", maxWidth: "100%", maxHeight: "100%" }} 
+                />
+            </div>
+        )}
+        
+        {/* Asset ID - monospace bold */}
+        {!includeQR && (
+            <div className="flex-1 flex items-center justify-center">
+                <p className={`font-['Courier_New',monospace] font-black text-black leading-none tracking-tight px-0.5`} style={{fontSize: dims.cssIdFont}}>{item.id}</p>
+            </div>
+        )}
+        
+        {/* Asset ID below QR */}
+        <div className="w-full text-center mb-[0.5mm]">
+            <p className={`font-['Courier_New',monospace] font-black text-black leading-none tracking-tight whitespace-nowrap overflow-hidden text-ellipsis px-0.5`} style={{fontSize: dims.cssIdFont}}>{item.id}</p>
+        </div>
+        
+        {/* Asset Name - bottom, truncated */}
+        <div className="w-full text-center">
+            <p className={`text-[#2D3748] font-medium leading-tight line-clamp-2 px-0.5`} style={{lineHeight: '1.1', fontSize: dims.cssNameFont}}>{item.name}</p>
+        </div>
     </div>
-);
+  );
+};
 
 interface InventoryProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -33,6 +105,7 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [paperSize, setPaperSize] = useState<'A4' | 'F4'>('A4');
+  const [labelSize, setLabelSize] = useState<'4x2' | '5x3' | '8x6'>('4x2');
   const [singleLabelPaperSize, setSingleLabelPaperSize] = useState<'A4' | 'F4'>('A4');
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [includeQR, setIncludeQR] = useState(true);
@@ -62,6 +135,27 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
 
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: keyof Equipment; direction: 'asc' | 'desc' } | null>(null);
+
+  const renderLabelSizeSelector = () => (
+    <div className="flex items-center gap-2">
+      <label className="text-sm font-medium dark:text-gray-300 whitespace-nowrap">Ukuran Label:</label>
+      <select value={labelSize} onChange={e => setLabelSize(e.target.value as '4x2' | '5x3' | '8x6')} className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm outline-none cursor-pointer">
+        <option value="4x2">4×2 cm</option>
+        <option value="5x3">5×3 cm</option>
+        <option value="8x6">8×6 cm</option>
+      </select>
+    </div>
+  );
+
+  const renderPaperSizeSelector = (value: 'A4' | 'F4', setter: (val: 'A4' | 'F4') => void) => (
+    <div className="flex items-center gap-2">
+      <label className="text-sm font-medium dark:text-gray-300 whitespace-nowrap">Ukuran Kertas:</label>
+      <select value={value} onChange={e => setter(e.target.value as 'A4' | 'F4')} className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm outline-none cursor-pointer">
+        <option value="A4">A4</option>
+        <option value="F4">F4</option>
+      </select>
+    </div>
+  );
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -403,26 +497,40 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
     }
   };
 
-  const handlePrintMulti = () => {
-    const selectedItemsData = items.filter(i => selectedItems.includes(i.id));
+  const handlePrintMulti = (overrideItems?: Equipment[], overridePaperSize?: 'A4' | 'F4') => {
+    const targetItems = overrideItems || items.filter(i => selectedItems.includes(i.id));
+    if (targetItems.length === 0) return;
+    const activePaperSize = overridePaperSize || paperSize;
     
-    // Generate QR code using qrserver.com API with 45px size to match 40mm label
     const getQRCodeURL = (value: string) => {
-      return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(value)}`;
+      return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(value)}`;
     };
 
-    const labelsHTML = selectedItemsData.map(item => `
-      <div style="width: 40mm; height: 25mm; padding: ${includeQR ? '0.5mm' : '1.5mm'} 2mm; box-sizing: border-box; border: 1px dashed #ccc; display: flex; flex-direction: column; justify-content: ${includeQR ? 'flex-start' : 'center'}; align-items: center; overflow: hidden; page-break-inside: avoid; float: left; margin: 1mm; background-color: #fff;">
-        <div style="text-align: center; width: 100%; margin-bottom: ${includeQR ? '0.5mm' : '2mm'}; margin-top: 0;">
-          <span style="font-size: ${includeQR ? '5pt' : '6pt'}; color: #333; font-weight: 800; letter-spacing: 0.5px;">CORE.FTI</span>
+    const dims = getLabelDimensions(labelSize);
+
+    const labelsHTML = targetItems.map(item => `
+      <div style="width: ${dims.width}; height: ${dims.height}; padding: 0.5mm 1.5mm; box-sizing: border-box; border: 1px dashed #ddd; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; page-break-inside: avoid; float: left; margin: 1mm; background: white; font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;">
+        <!-- CORE.FTI Header -->
+        <div style="width: 100%; text-align: center; margin-bottom: 0.3mm;">
+          <span style="font-size: ${dims.cssHeaderFont}; color: #4A5568; font-weight: 700; letter-spacing: 0.1px; line-height: 1;">CORE.FTI</span>
         </div>
+        
+        <!-- QR Code (70% height for scannability) -->
         ${includeQR ? `
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5mm;">
-          <img src="${getQRCodeURL(item.id)}" alt="QR Code" style="width: 40px; height: 40px;" />
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 0.4mm; max-height: ${dims.qrMaxH};">
+          <img src="${getQRCodeURL(item.id)}" alt="QR ${item.id}" style="width: ${dims.qrMaxW}; height: ${dims.qrMaxH}; max-width: 100%; max-height: 100%; image-rendering: -webkit-optimize-contrast; object-fit: contain;" />
         </div>
         ` : ''}
-        <p style="margin: 0; font-weight: 900; font-size: ${includeQR ? '5.5pt' : '8pt'}; font-family: monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; color: #000; line-height: 1; letter-spacing: -0.5px;">${item.id}</p>
-        <p style="margin: ${includeQR ? '1px' : '2px'} 0 0 0; font-size: ${includeQR ? '4.5pt' : '6pt'}; text-align: center; line-height: 1.1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: ${includeQR ? '3' : '4'}; -webkit-box-orient: vertical; color: #222; font-weight: normal;">${item.name}</p>
+        
+        <!-- Asset ID -->
+        <div style="width: 100%; text-align: center; margin-bottom: 0.3mm;">
+          <p style="margin: 0; font-family: 'Courier New', monospace; font-weight: 900; font-size: ${dims.cssIdFont}; color: #000; line-height: 1; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.id}</p>
+        </div>
+        
+        <!-- Asset Name -->
+        <div style="width: 100%; text-align: center;">
+          <p style="margin: 0; font-size: ${dims.cssNameFont}; color: #2D3748; line-height: 1.1; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${item.name}</p>
+        </div>
       </div>
     `).join('');
 
@@ -432,25 +540,32 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Cetak Label Inventaris - CORE.FTI</title>
+          <title>Asset Labels - CORE.FTI</title>
           <style>
             @page {
-              size: ${paperSize};
+              size: ${activePaperSize};
               margin: 0.5cm;
+              size-adjust: 100%;
             }
             body {
               margin: 0;
               padding: 5mm;
-              font-family: Arial, sans-serif;
+              font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+              font-size: 10pt;
+              background: white;
             }
             .label-container {
-              width: ${paperSize === 'A4' ? '210mm' : '215mm'};
-              min-height: ${paperSize === 'A4' ? '297mm' : '330mm'};
+              width: ${activePaperSize === 'A4' ? '210mm' : '215mm'};
+              min-height: ${activePaperSize === 'A4' ? '297mm' : '330mm'};
             }
             .clearfix::after {
               content: "";
               clear: both;
               display: table;
+            }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
@@ -463,7 +578,7 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
               setTimeout(function() {
                 window.print();
                 window.close();
-              }, 1000);
+              }, 800);
             };
           </script>
         </body>
@@ -476,237 +591,103 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
   const handlePrintSingle = () => {
     if (!qrItem) return;
     
-    // Generate QR code as PNG using qrserver.com API
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrItem.id)}`;
+    const dims = getLabelDimensions(labelSize);
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${dims.qrSize * 2}x${dims.qrSize * 2}&data=${encodeURIComponent(qrItem.id)}`;
     
-    // Create a canvas to compose the label image
     const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 250;
-    const ctx = canvas.getContext('2d');
+    canvas.width = dims.canvasWidth;
+    canvas.height = dims.canvasHeight;
+    const ctx = canvas.getContext('2d')!;
     
     if (ctx) {
-      // White background
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw CORE.FTI at top-center
-      ctx.fillStyle = '#666666';
-      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = '#4A5568';
+      ctx.font = `bold ${dims.headerFont} Roboto, Helvetica Neue, Arial`;
       ctx.textAlign = 'center';
-      ctx.fillText('CORE.FTI', canvas.width / 2, includeQR ? 15 : 25);
+      ctx.textBaseline = 'top';
+      ctx.fillText('CORE.FTI', canvas.width / 2, canvas.height * 0.05);
       
       const wrapText = (context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) => {
         const words = text.split(' ');
         let line = '';
+        let testLine = '';
         let currentLine = 0;
-
         for (let n = 0; n < words.length; n++) {
-          const testLine = line + words[n] + ' ';
+          testLine = line + words[n] + ' ';
           const metrics = context.measureText(testLine);
           if (metrics.width > maxWidth && n > 0) {
-            if (currentLine >= maxLines - 1) {
-              context.fillText(line.trim() + '...', x, y);
-              return;
-            } else {
-              context.fillText(line, x, y);
+            if (currentLine < maxLines - 1) {
+              context.fillText(line.trim(), x, y);
               line = words[n] + ' ';
               y += lineHeight;
               currentLine++;
+            } else {
+              context.fillText(line.trim() + '...', x, y);
+              break;
             }
           } else {
             line = testLine;
           }
         }
-        context.fillText(line, x, y);
+        if (currentLine < maxLines) {
+          context.fillText(line.trim(), x, y);
+        }
       };
 
       if (includeQR) {
-        // Load and draw QR code image
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
-          // Center QR code
-          const qrSize = 120;
-          const qrX = (canvas.width - qrSize) / 2;
-          const qrY = 28;
-          ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+          const qrCanvasSize = dims.qrSize * 2;
+          const qrY = canvas.height * 0.2;
+          const qrX = (canvas.width - qrCanvasSize) / 2;
+          ctx.drawImage(img, qrX, qrY, qrCanvasSize, qrCanvasSize);
           
-          // Draw FTI Code below QR
           ctx.fillStyle = '#000000';
-          ctx.font = 'bold 12px monospace';
+          ctx.font = `900 ${dims.idFont} 'Courier New', monospace`;
           ctx.textAlign = 'center';
-          ctx.fillText(qrItem.id, canvas.width / 2, qrY + qrSize + 15);
+          ctx.textBaseline = 'top';
+          ctx.fillText(qrItem.id, canvas.width / 2, qrY + qrCanvasSize + (canvas.height * 0.05));
           
-          // Draw Item Name at bottom
-          ctx.fillStyle = '#333333';
-          ctx.font = '10px Arial';
-          wrapText(ctx, qrItem.name, canvas.width / 2, qrY + qrSize + 30, canvas.width - 20, 14, 3);
+          ctx.fillStyle = '#2D3748';
+          ctx.font = `500 ${dims.nameFont} Roboto, Helvetica Neue, Arial`;
+          ctx.textAlign = 'center';
+          wrapText(ctx, qrItem.name, canvas.width / 2, qrY + qrCanvasSize + (canvas.height * 0.15), canvas.width - 40, parseInt(dims.nameFont) * 1.2, 2);
           
-          // Convert to PNG and download
-          const link = document.createElement('a');
-          link.download = `label-${qrItem.id}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
+          downloadPNG(canvas, qrItem.id);
         };
-        img.onerror = () => {
-          showToast('Gagal menghasilkan gambar QR. Silakan coba lagi.', "error");
-        };
+        img.onerror = () => showToast('QR generation failed. Retry.', 'error');
         img.src = qrImageUrl;
       } else {
         ctx.fillStyle = '#000000';
-        ctx.font = 'bold 20px monospace';
+        ctx.font = `900 ${parseInt(dims.idFont) * 1.5}px 'Courier New', monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(qrItem.id, canvas.width / 2, canvas.height / 2 - 10);
         
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = '#333333';
-        ctx.font = '16px Arial';
-        wrapText(ctx, qrItem.name, canvas.width / 2, canvas.height / 2 + 30, canvas.width - 40, 22, 4);
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#2D3748';
+        ctx.font = `500 ${parseInt(dims.nameFont) * 1.2}px Roboto, Helvetica Neue, Arial`;
+        wrapText(ctx, qrItem.name, canvas.width / 2, canvas.height / 2 + 15, canvas.width - 40, parseInt(dims.nameFont) * 1.4, 3);
         
-        // Convert to PNG and download
-        const link = document.createElement('a');
-        link.download = `label-${qrItem.id}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+        downloadPNG(canvas, qrItem.id);
       }
     }
-  };
-
-  const handlePrintSingleDirect = () => {
-    if (!qrItem) return;
     
-    // Generate QR code using qrserver.com API
-    const getQRCodeURL = (value: string) => {
-      return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(value)}`;
-    };
-
-    const singleLabelHTML = `
-      <div style="width: 40mm; height: 25mm; padding: ${includeQR ? '0.5mm' : '1.5mm'} 2mm; box-sizing: border-box; border: 1px dashed #ccc; display: flex; flex-direction: column; justify-content: ${includeQR ? 'flex-start' : 'center'}; align-items: center; overflow: hidden; margin: 5mm auto; background-color: #fff;">
-        <div style="text-align: center; width: 100%; margin-bottom: ${includeQR ? '0.5mm' : '2mm'}; margin-top: 0;">
-          <span style="font-size: ${includeQR ? '5pt' : '6pt'}; color: #333; font-weight: 800; letter-spacing: 0.5px;">CORE.FTI</span>
-        </div>
-        ${includeQR ? `
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5mm;">
-          <img src="${getQRCodeURL(qrItem.id)}" alt="QR Code" style="width: 40px; height: 40px;" />
-        </div>
-        ` : ''}
-        <p style="margin: 0; font-weight: 900; font-size: ${includeQR ? '5.5pt' : '8pt'}; font-family: monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; color: #000; line-height: 1; letter-spacing: -0.5px;">${qrItem.id}</p>
-        <p style="margin: ${includeQR ? '1px' : '2px'} 0 0 0; font-size: ${includeQR ? '4.5pt' : '6pt'}; text-align: center; line-height: 1.1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: ${includeQR ? '3' : '4'}; -webkit-box-orient: vertical; color: #222; font-weight: normal;">${qrItem.name}</p>
-      </div>
-    `;
-
-    const printWindow = window.open('', '_blank', 'width=400,height=300');
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Cetak Label - CORE.FTI</title>
-          <style>
-            @page {
-              size: 40mm 25mm;
-              margin: 0;
-            }
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: Arial, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-            }
-          </style>
-        </head>
-        <body>
-          ${singleLabelHTML}
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.close();
-              }, 500);
-            };
-          </script>
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
+    function downloadPNG(canvas: HTMLCanvasElement, id: string) {
+      const link = document.createElement('a');
+      link.download = `asset-label-${id}.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
     }
   };
 
-  // Print single label to A4/F4 sheet (similar to multiple print)
   const handlePrintSingleToSheet = () => {
     if (!qrItem) return;
     
-    // Generate QR code using qrserver.com API
-    const getQRCodeURL = (value: string) => {
-      return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(value)}`;
-    };
-
-    // Single label in the same format as multiple print
-    const singleLabelHTML = `
-      <div style="width: 40mm; height: 25mm; padding: ${includeQR ? '0.5mm' : '1.5mm'} 2mm; box-sizing: border-box; border: 1px dashed #ccc; display: flex; flex-direction: column; justify-content: ${includeQR ? 'flex-start' : 'center'}; align-items: center; overflow: hidden; page-break-inside: avoid; float: left; margin: 1mm; background-color: #fff;">
-        <div style="text-align: center; width: 100%; margin-bottom: ${includeQR ? '0.5mm' : '2mm'}; margin-top: 0;">
-          <span style="font-size: ${includeQR ? '5pt' : '6pt'}; color: #333; font-weight: 800; letter-spacing: 0.5px;">CORE.FTI</span>
-        </div>
-        ${includeQR ? `
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5mm;">
-          <img src="${getQRCodeURL(qrItem.id)}" alt="QR Code" style="width: 40px; height: 40px;" />
-        </div>
-        ` : ''}
-        <p style="margin: 0; font-weight: 900; font-size: ${includeQR ? '5.5pt' : '8pt'}; font-family: monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; color: #000; line-height: 1; letter-spacing: -0.5px;">${qrItem.id}</p>
-        <p style="margin: ${includeQR ? '1px' : '2px'} 0 0 0; font-size: ${includeQR ? '4.5pt' : '6pt'}; text-align: center; line-height: 1.1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: ${includeQR ? '3' : '4'}; -webkit-box-orient: vertical; color: #222; font-weight: normal;">${qrItem.name}</p>
-      </div>
-    `;
-
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Cetak Label - CORE.FTI</title>
-          <style>
-            @page {
-              size: ${singleLabelPaperSize};
-              margin: 0.5cm;
-            }
-            body {
-              margin: 0;
-              padding: 5mm;
-              font-family: Arial, sans-serif;
-            }
-            .label-container {
-              width: ${singleLabelPaperSize === 'A4' ? '210mm' : '215mm'};
-              min-height: ${singleLabelPaperSize === 'A4' ? '297mm' : '330mm'};
-            }
-            .clearfix::after {
-              content: "";
-              clear: both;
-              display: table;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="label-container clearfix">
-            ${singleLabelHTML}
-          </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.close();
-              }, 1000);
-            };
-          </script>
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    handlePrintMulti([qrItem], singleLabelPaperSize);
   };
 
   const handleShowQR = (item: Equipment) => {
@@ -1217,14 +1198,9 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
                             <input type="checkbox" checked={includeQR} onChange={(e) => setIncludeQR(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
                             <span className="text-gray-700 dark:text-gray-300">Sertakan QR Code</span>
                         </label>
-                        <div>
-                            <label className="text-sm font-medium mr-2 dark:text-gray-300">Ukuran Kertas:</label>
-                            <select value={paperSize} onChange={e => setPaperSize(e.target.value as any)} className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm">
-                                <option value="A4">A4</option>
-                                <option value="F4">F4</option>
-                            </select>
-                        </div>
-                        <button onClick={handlePrintMulti} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center">
+                        {renderLabelSizeSelector()}
+                        {renderPaperSizeSelector(paperSize, setPaperSize)}
+                        <button onClick={() => handlePrintMulti()} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center">
                             <Printer className="w-4 h-4 mr-2" /> Cetak
                         </button>
                         <button onClick={() => setIsPrintModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
@@ -1234,11 +1210,27 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
                 </div>
                 <div id="print-preview-area" className="flex-1 overflow-auto p-6 bg-gray-200 dark:bg-gray-900">
                     <div id="multi-label-print-area" className="bg-white shadow-lg mx-auto p-[5mm] box-border flex flex-wrap content-start gap-0" style={paperSize === 'A4' ? { width: '210mm', minHeight: '297mm' } : { width: '215mm', minHeight: '330mm' }}>
-                        {items.filter(i => selectedItems.includes(i.id)).map(item => (
-                            <div key={item.id} className="sticker-label" style={{ width: '40mm', height: '25mm', padding: '2mm', boxSizing: 'border-box', border: '1px dashed #ccc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', pageBreakInside: 'avoid' }}>
-                                <LabelComponent item={item} includeQR={includeQR} />
-                            </div>
-                        ))}
+                        {items.filter(i => selectedItems.includes(i.id)).map(item => {
+                            const previewDims = labelSize === '5x3' ? {width: '50mm', height: '30mm'} : labelSize === '8x6' ? {width: '80mm', height: '60mm'} : {width: '40mm', height: '20mm'};
+                            return (
+                                <div key={item.id} className="sticker-label" style={{ 
+                                    width: previewDims.width, 
+                                    height: previewDims.height, 
+                                    padding: '2mm', 
+                                    boxSizing: 'border-box', 
+                                    border: '1px dashed #ccc', 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center', 
+                                    overflow: 'hidden', 
+                                    pageBreakInside: 'avoid',
+                                    marginBottom: '2mm'
+                                }}>
+                                    <LabelComponent item={item} includeQR={includeQR} labelSize={labelSize} />
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -1331,12 +1323,10 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
                     <X className="w-5 h-5" />
                  </button>
               </div>
-              <div id="single-label-print-area" className="bg-white">
-                  <div className="p-6 flex flex-col items-center justify-center min-h-[250px]">
-                      <p className={`text-gray-700 font-bold tracking-widest ${includeQR ? 'text-sm mb-4' : 'text-lg mb-6'}`}>CORE.FTI</p>
-                      {includeQR && <QRCode value={qrItem.id} size={150} level="M" />}
-                      <p className={`font-extrabold text-black font-mono tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full max-w-full text-center px-2 ${includeQR ? 'text-sm mt-4' : 'text-2xl mb-2'}`}>{qrItem.id}</p>
-                      <p className={`text-gray-800 text-center font-normal ${includeQR ? 'text-xs mt-1 line-clamp-3' : 'text-lg px-4 line-clamp-4'}`}>{qrItem.name}</p>
+              <div id="single-label-print-area" className="bg-gray-100 dark:bg-gray-900 flex items-center justify-center p-4 min-h-[250px]">
+                  {/* The dynamic LabelComponent provides a live preview */}
+                  <div className="transform scale-[1.5] origin-center">
+                      <LabelComponent item={qrItem} includeQR={includeQR} labelSize={labelSize} />
                   </div>
               </div>
               <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
@@ -1346,15 +1336,8 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
                           <input type="checkbox" checked={includeQR} onChange={(e) => setIncludeQR(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
                           <span className="text-gray-700 dark:text-gray-300">Sertakan QR Code</span>
                       </label>
-                      <label className="text-sm font-medium mr-2 dark:text-gray-300">Ukuran Kertas:</label>
-                      <select 
-                          value={singleLabelPaperSize} 
-                          onChange={(e) => setSingleLabelPaperSize(e.target.value as 'A4' | 'F4')} 
-                          className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm"
-                      >
-                          <option value="A4">A4</option>
-                          <option value="F4">F4</option>
-                      </select>
+                      {renderLabelSizeSelector()}
+                      {renderPaperSizeSelector(singleLabelPaperSize, setSingleLabelPaperSize)}
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
                       <button onClick={handlePrintSingleToSheet} className="px-4 py-2 text-sm bg-purple-600 text-white hover:bg-purple-700 rounded-lg flex items-center shadow-md">
