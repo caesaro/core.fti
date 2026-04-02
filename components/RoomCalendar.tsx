@@ -173,7 +173,7 @@ const RoomCalendar: React.FC<RoomCalendarProps> = ({
   } = googleApi;
 
   /** True for roles that can create / edit / delete calendar events. */
-  const canManage = role === Role.ADMIN || role === Role.LABORAN;
+  const canManage = role === Role.ADMIN || role === Role.LABORAN || role.toString() === 'Supervisor';
 
   const getDateRangeForView = (date: Date, view: "month" | "week" | "day") => {
     const year = date.getFullYear();

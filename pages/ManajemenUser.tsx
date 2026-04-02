@@ -405,14 +405,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ showToast }) => {
                         >
                             <option value="User">User (Mahasiswa/Dosen)</option>
                             <option value="Laboran">Laboran</option>
-                            <option value="Teknisi">Teknisi</option>
-                            <option value="Admin">Admin</option>
+                            <option value="Supervisor">Supervisor</option>
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identifier (NIM/NIDN)</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identifier (NIM/NIDN) <span className="text-xs text-gray-400 font-normal">(Opsional)</span></label>
                         <input 
-                            type="text" required 
+                            type="text" 
                             value={formData.identifier} 
                             onChange={e => setFormData({...formData, identifier: e.target.value})}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono"
@@ -431,9 +430,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ showToast }) => {
                     />
                  </div>
                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No. Telepon / WA</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No. Telepon / WA <span className="text-xs text-gray-400 font-normal">(Opsional)</span></label>
                     <input 
-                        type="text" required 
+                        type="text" 
                         value={formData.phone || ''} 
                         onChange={e => {
                            const val = e.target.value;

@@ -74,7 +74,8 @@ const Ruangan: React.FC<RoomsProps> = ({ role, isDarkMode, onNavigate, showToast
   // Helper: Cek admin case-insensitive
   const isAdmin = role.toString().toUpperCase() === Role.ADMIN.toString().toUpperCase();
   const isLaboran = role.toString().toUpperCase() === Role.LABORAN.toString().toUpperCase();
-  const canManage = isAdmin || isLaboran;
+  const isSupervisor = role.toString().toUpperCase() === 'SUPERVISOR';
+  const canManage = isAdmin || isLaboran || isSupervisor;
 
   // Menggunakan custom hook useRooms (autoFetch dimatikan agar kontrol loading awal tetap dipegang Promise.all)
 const { rooms, fetchRooms: fetchRoomsApi } = useRooms({ autoFetch: false, excludeImage: true });

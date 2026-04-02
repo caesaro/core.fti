@@ -29,7 +29,8 @@ const getConditionColor = (condition?: string) => {
 const ManajemenSpesifikasi: React.FC<ManajemenSpesifikasiProps> = ({ role, isDarkMode, showToast }) => {
   const isAdmin = role.toString().toUpperCase() === Role.ADMIN.toString().toUpperCase();
   const isLaboran = role.toString().toUpperCase() === Role.LABORAN.toString().toUpperCase();
-  const canManage = isAdmin || isLaboran;
+  const isSupervisor = role.toString().toUpperCase() === 'SUPERVISOR';
+  const canManage = isAdmin || isLaboran || isSupervisor;
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);

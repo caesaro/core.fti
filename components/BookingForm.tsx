@@ -12,6 +12,7 @@ import {
   X,
   CalendarDays,
   Building2,
+  Wrench,
 } from "lucide-react";
 import { api } from "../services/api";
 
@@ -237,7 +238,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
   showToast,
 }) => {
   const userRole = (localStorage.getItem("currentRole") as Role) || Role.USER;
-  const canManage = userRole === Role.ADMIN || userRole === Role.LABORAN;
+  const canManage = userRole === Role.ADMIN || userRole === Role.LABORAN || userRole.toString() === 'Supervisor';
 
   // ── Common fields ──────────────────────────────────────────────────────────
   const [purpose, setPurpose] = useState(initialData?.purpose ?? "");
@@ -253,6 +254,20 @@ const BookingForm: React.FC<BookingFormProps> = ({
   const [bookingFile, setBookingFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoApprove, setAutoApprove] = useState(true);
+  
+  const [techSupportPic, setTechSupportPic] = useState<string[]>((initialData as any)?.techSupportPic ?? []);
+  const [techSupportNeeds, setTechSupportNeeds] = useState<string>((initialData as any)?.techSupportNeeds ?? "");
+  const [staffList, setStaffList] = useState<{id: string, name: string, jabatan: string}[]>([]);
+
+  useEffect(() => {
+    if (canManage) {
+      api('/api/staff').then(res => res.json()).then(data => {
+        if (Array.isArray(data)) {
+          setStaffList(data.filter((s: any) => s.status === 'Aktif').map((s: any) => ({ id: s.id, name: s.nama, jabatan: s.jabatan })));
+        }
+      }).catch(console.error);
+    }
+  }, [canManage]);
 
   const [blocks, setBlocks] = useState<RoomScheduleBlock[]>(() => {
     // Edit mode — rebuild a single block from the saved booking
@@ -432,6 +447,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
             }),
           ),
           autoApprove: canManage ? autoApprove : false,
+        techSupportPic: canManage ? techSupportPic : [],
+        techSupportNeeds: canManage ? techSupportNeeds : "",
         };
 
         const res = await api(`/api/bookings/${initialData.id}`, {
@@ -460,6 +477,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
               endTime,
             })),
             autoApprove: canManage ? autoApprove : false,
+          techSupportPic: canManage ? techSupportPic : [],
+          techSupportNeeds: canManage ? techSupportNeeds : "",
           })),
         );
 
@@ -724,7 +743,9 @@ const BookingForm: React.FC<BookingFormProps> = ({
             SECTION 3 — Auto-Approve toggle  (admin / laboran only)
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
-        {!initialData?.id && canManage && (
+    {canManage && (
+      <div className="space-y-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        {!initialData?.id && (
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
             <div className="flex items-center gap-2">
               <input
@@ -749,6 +770,55 @@ const BookingForm: React.FC<BookingFormProps> = ({
             )}
           </div>
         )}
+
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 mb-4">
+            <Wrench className="w-4 h-4 text-blue-500" />
+            Technical Support (Opsional)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PIC Laboran / Teknisi</label>
+              {techSupportPic.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {techSupportPic.map(picId => {
+                    const staff = staffList.find(s => s.id === picId);
+                    return (
+                      <span key={picId} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                        {staff?.name || picId}
+                        <button type="button" onClick={() => setTechSupportPic(prev => prev.filter(id => id !== picId))} className="ml-1 text-blue-600 hover:text-blue-800">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <select
+                value=""
+                onChange={e => { if (e.target.value) setTechSupportPic(prev => [...prev, e.target.value]) }}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">+ Tambah PIC</option>
+                {staffList.filter(s => !techSupportPic.includes(s.id)).map(staff => (
+                  <option key={staff.id} value={staff.id}>{staff.name} ({staff.jabatan})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kebutuhan Teknis (Mic, Sound, dll)</label>
+              <textarea
+                value={techSupportNeeds}
+                onChange={e => setTechSupportNeeds(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg dark:text-white focus:ring-2 focus:ring-blue-500 text-sm"
+                rows={2}
+                placeholder="Daftar alat yang dibutuhkan..."
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             SECTION 4 — Proposal file upload

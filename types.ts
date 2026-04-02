@@ -2,6 +2,7 @@ export enum Role {
   ADMIN = 'Admin',
   LABORAN = 'Laboran',
   USER = 'User',
+  SUPERVISOR = 'Supervisor',
 }
 
 export enum BookingStatus {

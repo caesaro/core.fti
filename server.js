@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import express from 'express';
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -214,7 +214,7 @@ app.get('/', (req, res) => {
 });
 
 // Endpoint untuk mengambil data users
-app.get('/api/users', verifyRole(['Admin', 'Laboran']), async (req, res) => {
+app.get('/api/users', verifyRole(['Admin', 'Laboran', 'Supervisor']), async (req, res) => {
   try {
     const { type } = req.query;
     
@@ -256,7 +256,7 @@ app.get('/api/users', verifyRole(['Admin', 'Laboran']), async (req, res) => {
 });
 
 // Endpoint Get Single User (Profile)
-app.get('/api/users/:id', verifyRole(['Admin', 'Laboran', 'User']), async (req, res) => {
+app.get('/api/users/:id', verifyRole(['Admin', 'Laboran', 'User', 'Supervisor']), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'User tidak ditemukan' });
@@ -290,7 +290,7 @@ app.get('/api/users/:id', verifyRole(['Admin', 'Laboran', 'User']), async (req, 
 });
 
 // Endpoint Get User Account Info (for Profile page)
-app.get('/api/users/:id/account-info', verifyRole(['Admin', 'Laboran', 'User']), async (req, res) => {
+app.get('/api/users/:id/account-info', verifyRole(['Admin', 'Laboran', 'User', 'Supervisor']), async (req, res) => {
   try {
     const userId = req.params.id;
     
@@ -797,7 +797,7 @@ app.post('/api/check-user-exists', async (req, res) => {
 });
 
 // Endpoint Ubah Password User (Dari Halaman Profile)
-app.put('/api/users/:id/change-password', verifyRole(['Admin', 'Laboran', 'User']), async (req, res) => {
+app.put('/api/users/:id/change-password', verifyRole(['Admin', 'Laboran', 'User', 'Supervisor']), async (req, res) => {
   const { id } = req.params;
   const { currentPassword, newPassword } = req.body;
 
@@ -923,7 +923,8 @@ app.put('/api/users/:id/reset-password', verifyRole(['Admin']), async (req, res)
 app.post('/api/users', verifyRole(['Admin']), async (req, res) => {
   const { name, email, username, role, identifier, status, phone } = req.body;
   try {
-    const check = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
+    const finalEmail = email ? email : `${username}@pending.local`;
+    const check = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [finalEmail, username]);
     if (check.rows.length > 0) return res.status(400).json({ error: 'Email atau Username sudah terdaftar.' });
 
     // Set password to NULL so user must reset password like admin reset
@@ -931,7 +932,7 @@ app.post('/api/users', verifyRole(['Admin']), async (req, res) => {
 
     await pool.query(
       "INSERT INTO users (id, nama, email, username, password, role, identifier, status, telepon) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8)",
-      [id, name, email, username, role, identifier, status, phone]
+      [id, name, finalEmail, username, role, identifier || '', status, phone || '']
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -941,20 +942,21 @@ app.post('/api/users', verifyRole(['Admin']), async (req, res) => {
 });
 
 // Update User
-app.put('/api/users/:id', verifyRole(['Admin', 'User']), async (req, res) => {
+app.put('/api/users/:id', verifyRole(['Admin', 'Laboran', 'User', 'Supervisor']), async (req, res) => {
   const { name, email, username, identifier, phone, avatar, role } = req.body;
   try {
+    const finalEmail = email ? email : `${username}@pending.local`;
     // Cek apakah username atau email sudah digunakan user lain
     const check = await pool.query(
       'SELECT id FROM users WHERE (username = $1 OR email = $2) AND id != $3',
-      [username, email, req.params.id]
+      [username, finalEmail, req.params.id]
     );
     if (check.rows.length > 0) {
       return res.status(400).json({ error: 'Username atau Email sudah digunakan user lain.' });
     }
 
     let query = "UPDATE users SET nama=$1, email=$2, username=$3, identifier=$4, telepon=$5";
-    let params = [name, email, username, identifier, phone];
+    let params = [name, finalEmail, username, identifier || '', phone || ''];
     let paramIndex = 6;
 
     // Update Role jika dikirim (Hanya Admin yang bisa kirim ini dari frontend)
@@ -1964,7 +1966,7 @@ app.get('/api/bookings', async (req, res) => {
 });
 
 app.post('/api/bookings', async (req, res) => {
-    const { roomId, userId, responsiblePerson, contactPerson, purpose, proposalFile, schedules, autoApprove } = req.body;
+    const { roomId, userId, responsiblePerson, contactPerson, purpose, proposalFile, schedules, autoApprove, techSupportPic, techSupportNeeds } = req.body;
     
     // 1. Validasi & Konversi File Proposal (Sebelum Transaksi DB)
     let proposalBuffer = null;
@@ -1986,15 +1988,15 @@ app.post('/api/bookings', async (req, res) => {
         
         // 2. Set Status Default ke Pending
         let initialStatus = 'Pending';
-        if (req.user && (req.user.role === 'Admin' || req.user.role === 'Laboran') && autoApprove) {
+        if (req.user && (req.user.role === 'Admin' || req.user.role === 'Laboran' || req.user.role === 'Supervisor') && autoApprove) {
             initialStatus = 'Disetujui';
         }
 
         // Insert Header Booking
         await client.query(
-            `INSERT INTO bookings (id, room_id, user_id, penanggung_jawab, contact_person, keperluan, file_proposal, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [bookingId, roomId, userId, responsiblePerson, contactPerson, purpose, proposalBuffer, initialStatus]
+            `INSERT INTO bookings (id, room_id, user_id, penanggung_jawab, contact_person, keperluan, file_proposal, status, tech_support_pic, tech_support_needs)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [bookingId, roomId, userId, responsiblePerson, contactPerson, purpose, proposalBuffer, initialStatus, techSupportPic || [], techSupportNeeds || null]
         );
 
         // Insert Detail Jadwal
@@ -2022,7 +2024,7 @@ app.post('/api/bookings', async (req, res) => {
 // Update Booking (Hanya untuk User saat status masih Pending)
 app.put('/api/bookings/:id', async (req, res) => {
     const { id } = req.params;
-    const { roomId, responsiblePerson, contactPerson, purpose, proposalFile, schedules } = req.body;
+    const { roomId, responsiblePerson, contactPerson, purpose, proposalFile, schedules, techSupportPic, techSupportNeeds } = req.body;
     
     let proposalBuffer = null;
     if (proposalFile && proposalFile.startsWith('data:application/pdf')) {
@@ -2037,9 +2039,9 @@ app.put('/api/bookings/:id', async (req, res) => {
     try {
         await client.query('BEGIN');
         
-        let updateQuery = `UPDATE bookings SET room_id=$1, penanggung_jawab=$2, contact_person=$3, keperluan=$4`;
-        let params = [roomId, responsiblePerson, contactPerson, purpose];
-        let paramIndex = 5;
+        let updateQuery = `UPDATE bookings SET room_id=$1, penanggung_jawab=$2, contact_person=$3, keperluan=$4, tech_support_pic=$5, tech_support_needs=$6`;
+        let params = [roomId, responsiblePerson, contactPerson, purpose, techSupportPic || [], techSupportNeeds || null];
+        let paramIndex = 7;
 
         if (proposalBuffer) {
             updateQuery += `, file_proposal=$${paramIndex}`;

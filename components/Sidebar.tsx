@@ -17,10 +17,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
   const [expandedGroups, setExpandedGroups] = useState(new Set());
 
   const mainItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'rooms', label: 'Daftar Ruangan', icon: DoorOpen, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-    { id: 'manage-bookings', label: 'Pesanan Ruang', icon: ClipboardCheck, roles: [Role.ADMIN, Role.LABORAN] },
-    { id: 'inventory', label: 'Inventaris', icon: Archive, roles: [Role.ADMIN, Role.LABORAN] },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [Role.ADMIN, Role.LABORAN, Role.USER, 'Supervisor' as Role] },
+    { id: 'rooms', label: 'Daftar Ruangan', icon: DoorOpen, roles: [Role.ADMIN, Role.LABORAN, Role.USER, 'Supervisor' as Role] },
+    { id: 'manage-bookings', label: 'Pesanan Ruang', icon: ClipboardCheck, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
+    { id: 'inventory', label: 'Inventaris', icon: Archive, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
     { id: 'bookings', label: 'Pemesanan Saya', icon: ClipboardList, roles: [Role.USER] },
   ];
 
@@ -29,9 +29,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       id: 'jadwal',
       title: 'Jadwal',
       items: [
-        { id: 'schedule', label: 'Jadwal Ruang', icon: CalendarRange, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-        { id: 'class-schedule', label: 'Jadwal Kuliah', icon: BookOpen, roles: [Role.ADMIN, Role.LABORAN] },
-        { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN] },
+      { id: 'schedule', label: 'Jadwal Ruang', icon: CalendarRange, roles: [Role.ADMIN, Role.LABORAN, Role.USER, 'Supervisor' as Role] },
+      { id: 'class-schedule', label: 'Jadwal Kuliah', icon: BookOpen, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
+      { id: 'events', label: 'Acara', icon: CalendarDays, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
       ]
     },
     {
@@ -39,17 +39,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       title: 'Manajemen',
       items: [
         { id: 'users', label: 'Manajemen User', icon: Users, roles: [Role.ADMIN] },
-        { id: 'laboran-management', label: 'Manajemen Laboran', icon: Wrench, roles: [Role.ADMIN] },
-        { id: 'pkl-management', label: 'Manajemen PKL', icon: GraduationCap, roles: [Role.ADMIN, Role.LABORAN] },
-        { id: 'specs-management', label: 'Spesifikasi & Software', icon: Cpu, roles: [Role.ADMIN, Role.LABORAN] },
+      { id: 'laboran-management', label: 'Manajemen Laboran', icon: Wrench, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
+      { id: 'pkl-management', label: 'Manajemen PKL', icon: GraduationCap, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
+      { id: 'specs-management', label: 'Spesifikasi & Software', icon: Cpu, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
       ]
     },
     {
       id: 'transaksi',
       title: 'Transaksi',
       items: [
-        { id: 'loans', label: 'Peminjaman Barang', icon: Box, roles: [Role.ADMIN, Role.LABORAN] },
-        { id: 'item-movements', label: 'Perpindahan Barang', icon: ArrowRightLeft, roles: [Role.ADMIN, Role.LABORAN] },
+      { id: 'loans', label: 'Peminjaman Barang', icon: Box, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
+      { id: 'item-movements', label: 'Perpindahan Barang', icon: ArrowRightLeft, roles: [Role.ADMIN, Role.LABORAN, 'Supervisor' as Role] },
       ]
     },
     {
@@ -57,8 +57,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentRole, currentPage, onNavigate,
       title: 'Pengaturan',
       items: [
         { id: 'settings', label: 'Pengaturan', icon: Settings, roles: [Role.ADMIN] },
-        { id: 'profile', label: 'Profile', icon: Users, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
-        { id: 'tentang', label: 'Tentang', icon: Info, roles: [Role.ADMIN, Role.LABORAN, Role.USER] },
+      { id: 'profile', label: 'Profile', icon: Users, roles: [Role.ADMIN, Role.LABORAN, Role.USER, 'Supervisor' as Role] },
+      { id: 'tentang', label: 'Tentang', icon: Info, roles: [Role.ADMIN, Role.LABORAN, Role.USER, 'Supervisor' as Role] },
       ]
     }
   ];

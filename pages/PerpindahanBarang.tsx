@@ -1,7 +1,7 @@
 // Page: ItemMovements (Perpindahan Barang)
 import React, { useState, useEffect } from 'react';
 import { Role, ItemMovement, Equipment } from '../types';
-import { Search, Filter, Plus, X, ArrowRightLeft, Box, Calendar, MapPin, FileText, Eye, Save, RotateCcw, ArrowUpRight, ArrowDownLeft, Hand, ChevronLeft, ChevronRight, QrCode, Loader2 } from 'lucide-react';
+import { Search, Filter, Plus, X, ArrowRightLeft, Box, Calendar, MapPin, FileText, Eye, Save, RotateCcw, ArrowUpRight, ArrowDownLeft, Hand, ChevronLeft, ChevronRight, QrCode, Loader2, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
 import { TableSkeleton } from '../components/Skeleton';
 import ConfirmModal from '../components/ConfirmModal';
@@ -31,7 +31,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    inventoryId: '',
+    inventoryIds: [''],
     movementDate: new Date().toISOString().split('T')[0],
     movementType: 'Manual' as 'Manual' | 'Peminjaman',
     fromPerson: '',
@@ -46,6 +46,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
   const [selectedMovement, setSelectedMovement] = useState<ItemMovement | null>(null);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
 
   useEffect(() => {
     // Initial data fetch
@@ -121,43 +122,50 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.inventoryId || !formData.movementDate || !formData.toPerson || !formData.movedBy) {
+    const selectedIds = formData.inventoryIds.filter(id => id !== '');
+
+    if (selectedIds.length === 0 || !formData.movementDate || !formData.toPerson || !formData.movedBy) {
       showToast("Mohon lengkapi data perpindahan.", "error");
       return;
     }
 
-    const selectedEquipment = equipment.find(item => item.id === formData.inventoryId);
-    const currentLocation = selectedEquipment?.location || formData.fromLocation;
-
     try {
-      const res = await api('/api/item-movements', {
-        method: 'POST',
-        data: {
-          inventoryId: formData.inventoryId,
-          movementDate: formData.movementDate,
-          movementType: formData.movementType,
-          fromPerson: formData.fromPerson,
-          toPerson: formData.toPerson,
-          movedBy: formData.movedBy,
-          quantity: formData.quantity,
-          fromLocation: currentLocation,
-          toLocation: formData.toLocation,
-          notes: formData.notes
-        }
+      const promises = selectedIds.map(id => {
+        const selectedEquipment = equipment.find(item => item.id === id);
+        const currentLocation = selectedEquipment?.location || formData.fromLocation;
+
+        return api('/api/item-movements', {
+          method: 'POST',
+          data: {
+            inventoryId: id,
+            movementDate: formData.movementDate,
+            movementType: formData.movementType,
+            fromPerson: formData.fromPerson,
+            toPerson: formData.toPerson,
+            movedBy: formData.movedBy,
+            quantity: formData.quantity,
+            fromLocation: currentLocation,
+            toLocation: formData.toLocation,
+            notes: formData.notes
+          }
+        });
       });
       
-      if (res.ok) {
+      const results = await Promise.all(promises);
+      if (results.every(res => res.ok)) {
         fetchData();
-        showToast("Perpindahan barang berhasil dicatat.", "success");
+        showToast(`${selectedIds.length} perpindahan barang berhasil dicatat.`, "success");
         setIsModalOpen(false);
         resetForm();
+      } else {
+        showToast("Sebagian atau seluruh data gagal disimpan", "warning");
       }
     } catch (e) { showToast("Gagal menyimpan data", "error"); }
   };
 
   const resetForm = () => {
     setFormData({
-      inventoryId: '',
+      inventoryIds: [''],
       movementDate: new Date().toISOString().split('T')[0],
       movementType: 'Manual',
       fromPerson: '',
@@ -170,11 +178,33 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
     });
   };
 
-const equipmentOptions: SelectOption[] = equipment.map(item => ({
-  value: item.id,
-  label: item.name,
-  subLabel: `Lokasi: ${item.location || 'Belum ada'}`
-}));
+  const addEquipmentRow = () => {
+    setFormData(prev => ({ ...prev, inventoryIds: [...prev.inventoryIds, ''] }));
+  };
+
+  const removeEquipmentRow = (index: number) => {
+    if (formData.inventoryIds.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        inventoryIds: prev.inventoryIds.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  const updateEquipmentRow = (index: number, value: string) => {
+    const newIds = [...formData.inventoryIds];
+    newIds[index] = value;
+    setFormData(prev => ({ ...prev, inventoryIds: newIds }));
+  };
+
+  const getEquipmentOptions = (currentSelectedId: string): SelectOption[] => {
+    return equipment.map(item => ({
+      value: item.id,
+      label: item.name,
+      subLabel: `Kode FTI: ${item.id}`,
+      disabled: formData.inventoryIds.includes(item.id) && item.id !== currentSelectedId
+    }));
+  };
 
   const renderTypeBadge = (type: string) => {
     let color = 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
@@ -228,13 +258,35 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
   const handleScanSuccess = (decodedText: string) => {
     const item = equipment.find(e => e.id === decodedText);
     if (item) {
-      setFormData(prev => ({
-        ...prev,
-        inventoryId: item.id,
-        fromLocation: item.location || ''
-      }));
-      setIsScannerOpen(false);
-      showToast(`Barang ditemukan: ${item.name}`, "success");
+      setFormData(prev => {
+        const isDuplicate = prev.inventoryIds.some((id, idx) => 
+          id === decodedText && (scanningRowIndex === null || idx !== scanningRowIndex)
+        );
+        
+        if (isDuplicate) {
+          showToast("Barang sudah ada di daftar", "warning");
+          return prev;
+        }
+
+        const newIds = [...prev.inventoryIds];
+        if (scanningRowIndex !== null) {
+          newIds[scanningRowIndex] = decodedText;
+        } else {
+          if (newIds.length === 1 && newIds[0] === '') {
+            newIds[0] = decodedText;
+          } else {
+            newIds.push(decodedText);
+          }
+        }
+        
+        return { ...prev, inventoryIds: newIds, fromLocation: item.location || prev.fromLocation };
+      });
+      
+      if (scanningRowIndex !== null) {
+        setIsScannerOpen(false);
+      }
+      setScanningRowIndex(null);
+      showToast(`Ditambahkan: ${item.name}`, "success");
     } else {
       showToast(`Barang dengan ID ${decodedText} tidak ditemukan.`, "error");
     }
@@ -431,31 +483,67 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
               </datalist>
 
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pilih Barang</label>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsScannerOpen(true)}
-                    className="text-xs text-blue-600 hover:underline flex items-center font-medium"
-                  >
-                    <QrCode className="w-3 h-3 mr-1" /> Scan QR
-                  </button>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Daftar Barang</label>
+                  <div className="flex gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setScanningRowIndex(null);
+                        setIsScannerOpen(true);
+                      }}
+                      className="text-xs text-blue-600 hover:underline flex items-center font-medium"
+                    >
+                      <QrCode className="w-3 h-3 mr-1" /> Scan Tambah
+                    </button>
+                    <button type="button" onClick={addEquipmentRow} className="text-xs text-blue-600 hover:underline flex items-center font-medium">
+                      <Plus className="w-3 h-3 mr-1" /> Tambah Manual
+                    </button>
+                  </div>
                 </div>
-                <SearchableSelect
-                  options={equipmentOptions}
-                  value={formData.inventoryId}
-                  onChange={(val) => {
-                    const item = equipment.find(eq => eq.id === val);
-                    setFormData({
-                      ...formData,
-                      inventoryId: val,
-                      fromLocation: item?.location || ''
-                    });
-                  }}
-                  placeholder="-- Pilih Barang --"
-                  searchPlaceholder="Cari nama barang..."
-                  required
-                />
+
+                <div className="space-y-3">
+                  {formData.inventoryIds.map((selectedId, index) => (
+                    <div key={index} className="flex gap-2 animate-fade-in-up">
+                      <SearchableSelect
+                        options={getEquipmentOptions(selectedId)}
+                        value={selectedId}
+                        onChange={(val) => {
+                          const item = equipment.find(eq => eq.id === val);
+                          updateEquipmentRow(index, val);
+                          if (index === 0 && item?.location) {
+                             setFormData(prev => ({...prev, fromLocation: item.location || prev.fromLocation}));
+                          }
+                        }}
+                        placeholder="-- Pilih Barang --"
+                        searchPlaceholder="Cari nama barang..."
+                        required
+                        className="flex-1"
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setScanningRowIndex(index);
+                          setIsScannerOpen(true);
+                        }}
+                        className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        title="Scan QR untuk baris ini"
+                      >
+                        <QrCode className="w-4 h-4" />
+                      </button>
+                      {formData.inventoryIds.length > 1 && (
+                        <button 
+                          type="button" 
+                          onClick={() => removeEquipmentRow(index)}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                          title="Hapus baris"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -509,7 +597,7 @@ const equipmentOptions: SelectOption[] = equipment.map(item => ({
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Asal</label>
                   <input 
                     type="text"
-                    value={formData.fromLocation || equipment.find(e => e.id === formData.inventoryId)?.location || ''}
+                    value={formData.fromLocation || equipment.find(e => e.id === formData.inventoryIds[0])?.location || ''}
                     onChange={(e) => setFormData({...formData, fromLocation: e.target.value})}
                     placeholder="Rak/Gudang"
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"

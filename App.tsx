@@ -271,7 +271,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <PeminjamanBarang role={currentRole} showToast={showToast} />
@@ -281,7 +281,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <ManajemenLaboran onNavigate={setCurrentPage} showToast={showToast} />
@@ -291,7 +291,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <ManajemenPKL showToast={showToast} />
@@ -301,7 +301,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <Inventaris showToast={showToast} />
@@ -311,7 +311,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <PerpindahanBarang role={currentRole} showToast={showToast} />
@@ -335,7 +335,7 @@ const App: React.FC = () => {
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <PesananRuang addNotification={addNotification} showToast={showToast} />
@@ -357,7 +357,7 @@ case 'settings':
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <JadwalKuliah role={currentRole} showToast={showToast} />
@@ -367,7 +367,7 @@ case 'specs-management':
           return (
             <ProtectedRoute 
               currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN]} 
+              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
               onNavigate={setCurrentPage}
             >
               <ManajemenSpesifikasi role={currentRole} isDarkMode={isDarkMode} showToast={showToast} />
