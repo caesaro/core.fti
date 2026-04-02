@@ -18,6 +18,7 @@ const getLabelDimensions = (size: '4x2' | '5x3' | '8x6') => {
     const MM_TO_INCH = 0.0393701;
     const convertMmToPx = (mm: number) => Math.round(mm * MM_TO_INCH * DPI);
 
+    //bagian mengganti ukuran label, QR code, dan font berdasarkan pilihan ukuran label
     switch (size) {
         case '5x3': return { 
             width: '50mm', height: '30mm', canvasWidth: convertMmToPx(50), canvasHeight: convertMmToPx(30),
@@ -33,7 +34,7 @@ const getLabelDimensions = (size: '4x2' | '5x3' | '8x6') => {
         };
         default: return { // 4x2
             width: '40mm', height: '20mm', canvasWidth: convertMmToPx(40), canvasHeight: convertMmToPx(20),
-            qrSize: 64, qrMaxW: '12mm', qrMaxH: '12mm', 
+            qrSize: 40, qrMaxW: '12mm', qrMaxH: '12mm', 
             headerFont: '12pt', idFont: '16pt', nameFont: '12pt',
             cssHeaderFont: '5pt', cssIdFont: '6.5pt', cssNameFont: '5pt'
         };
