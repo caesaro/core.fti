@@ -258,7 +258,8 @@ const Inventory: React.FC<InventoryProps> = ({ showToast }) => {
           setIsModalOpen(false);
           showToast("Data barang berhasil diperbarui.", "success");
         } else {
-          showToast("Gagal memperbarui data.", "error");
+          const data = await res.json();
+          showToast(data.error || "Gagal memperbarui data.", "error");
         }
       } else {
         if (!formData.id) {

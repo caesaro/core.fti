@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import express from 'express';
+﻿﻿import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -1352,9 +1352,18 @@ app.put('/api/inventory/:id', async (req, res) => {
     await client.query('BEGIN');
     
     // 1. Ambil data lama untuk mengecek perubahan lokasi
-    const oldItemRes = await client.query('SELECT lokasi FROM inventory WHERE id = $1', [req.params.id]);
+    const oldItemRes = await client.query('SELECT lokasi, is_available FROM inventory WHERE id = $1', [req.params.id]);
     const oldLocation = oldItemRes.rows.length > 0 ? (oldItemRes.rows[0].lokasi || '') : '';
+    const wasAvailable = oldItemRes.rows.length > 0 ? oldItemRes.rows[0].is_available : true;
     const newLocation = location || '';
+
+    // Validasi Ketersediaan: Cegah pemaksaan ubah status jadi Tersedia jika barang masih dipinjam!
+    if (isAvailable && !wasAvailable) {
+        const activeLoan = await client.query('SELECT id FROM loans WHERE inventory_id = $1 AND status = \'Dipinjam\'', [req.params.id]);
+        if (activeLoan.rows.length > 0) {
+            throw new Error('Gagal: Tidak dapat diubah menjadi Tersedia karena barang sedang dalam masa peminjaman.');
+        }
+    }
 
     // 2. Update data inventaris
     await client.query(
@@ -1470,6 +1479,49 @@ app.post('/api/item-movements', async (req, res) => {
     await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'DB Error' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/item-movements/:id', async (req, res) => {
+  const { id } = req.params;
+  const { movementDate, fromPerson, toPerson, movedBy, quantity, fromLocation, toLocation, notes } = req.body;
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const movRes = await client.query('SELECT * FROM item_movements WHERE id = $1', [id]);
+    if (movRes.rows.length === 0) throw new Error('Data tidak ditemukan');
+    const mov = movRes.rows[0];
+
+    // Validasi: hanya bisa mengedit tipe perpindahan "Manual"
+    if (mov.movement_type !== 'Manual') {
+      throw new Error('Hanya perpindahan manual yang dapat diedit secara langsung');
+    }
+
+    // Update tabel item_movements
+    await client.query(
+      `UPDATE item_movements 
+       SET movement_date = $1, from_person = $2, to_person = $3, moved_by = $4, quantity = $5, from_location = $6, to_location = $7, notes = $8
+       WHERE id = $9`,
+      [movementDate, fromPerson, toPerson, movedBy, quantity, fromLocation, toLocation, notes, id]
+    );
+
+    // Update lokasi di tabel inventory JIKA ini adalah riwayat perpindahan yang paling terakhir
+    if (toLocation !== undefined && toLocation !== mov.to_location) {
+       const lastRes = await client.query('SELECT id FROM item_movements WHERE inventory_id = $1 ORDER BY created_at DESC LIMIT 1', [mov.inventory_id]);
+       if (lastRes.rows.length > 0 && lastRes.rows[0].id === id) {
+          await client.query('UPDATE inventory SET lokasi = $1 WHERE id = $2', [toLocation || '', mov.inventory_id]);
+       }
+    }
+    
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message || 'Gagal memperbarui data' });
   } finally {
     client.release();
   }
@@ -2257,7 +2309,8 @@ app.get('/api/loans', async (req, res) => {
             transactionId: row.transaction_id,
             equipmentId: row.inventory_id,
             equipmentName: row.equipment_name,
-            borrowerName: `${row.nama_peminjam} (${row.peminjam_identifier})`,
+            borrowerName: row.nama_peminjam,
+            nim: row.peminjam_identifier,
             borrowOfficer: row.petugas_pinjam,
             returnOfficer: row.petugas_pengembalian,
             guarantee: row.jaminan,
@@ -2328,21 +2381,127 @@ app.post('/api/loans', async (req, res) => {
     }
 });
 
+app.put('/api/loans/group/:id', async (req, res) => {
+    const { id } = req.params;
+    const { equipmentIds, borrowerName, nim, guarantee, borrowDate, borrowTime, borrowOfficer, location } = req.body;
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Update data transaksi utama
+        await client.query(
+            'UPDATE transactions SET peminjam_identifier=$1, nama_peminjam=$2, petugas_pinjam=$3, jaminan=$4, tgl_pinjam=$5, waktu_pinjam=$6 WHERE id=$7',
+            [nim, borrowerName, borrowOfficer, guarantee, borrowDate, borrowTime, id]
+        );
+
+        // 2. Ambil data barang yang sedang dipinjam pada transaksi ini
+        const currentLoansRes = await client.query('SELECT id, inventory_id FROM loans WHERE transaction_id = $1', [id]);
+        const currentLoans = currentLoansRes.rows;
+        const currentEqIds = currentLoans.map(l => l.inventory_id);
+        
+        // Pisahkan ID mana yang dihapus, ditambah, dan tetap dipertahankan
+        const eqIdsToRemove = currentEqIds.filter(eqId => !equipmentIds.includes(eqId));
+        const eqIdsToAdd = equipmentIds.filter(eqId => !currentEqIds.includes(eqId));
+        const eqIdsToKeep = currentEqIds.filter(eqId => equipmentIds.includes(eqId));
+
+        // 3. Hapus barang yang dikurangi dari peminjaman
+        for (const eqId of eqIdsToRemove) {
+            const loanId = currentLoans.find(l => l.inventory_id === eqId).id;
+            
+            // Ambil lokasi asal sebelum menghapus data perpindahan
+            const movRes = await client.query('SELECT from_location FROM item_movements WHERE loan_id = $1 AND movement_type = \'Peminjaman\'', [loanId]);
+            const originalLoc = movRes.rows.length > 0 ? (movRes.rows[0].from_location || '') : '';
+            
+            await client.query('UPDATE inventory SET is_available = TRUE, lokasi = $1 WHERE id = $2', [originalLoc, eqId]);
+            await client.query('DELETE FROM item_movements WHERE loan_id = $1 AND movement_type = \'Peminjaman\'', [loanId]);
+            await client.query('DELETE FROM loans WHERE id = $1', [loanId]);
+        }
+
+        // 4. Tambahkan barang baru ke peminjaman
+        for (const eqId of eqIdsToAdd) {
+            // Cek ketersediaan
+            const invCheck = await client.query('SELECT is_available, lokasi, nama FROM inventory WHERE id = $1', [eqId]);
+            if (invCheck.rows.length === 0 || !invCheck.rows[0].is_available) {
+                throw new Error(`Barang ${invCheck.rows[0]?.nama || eqId} tidak tersedia atau sedang dipinjam.`);
+            }
+            const fromLocation = invCheck.rows[0].lokasi || '';
+
+            const loanId = `L-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            await client.query(
+                'INSERT INTO loans (id, transaction_id, inventory_id, status) VALUES ($1, $2, $3, $4)',
+                [loanId, id, eqId, 'Dipinjam']
+            );
+            
+            await client.query('UPDATE inventory SET is_available = FALSE, lokasi = $1 WHERE id = $2', [location || fromLocation, eqId]);
+            
+            const movId = `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+            await client.query(
+                `INSERT INTO item_movements (id, inventory_id, movement_date, movement_type, from_person, to_person, moved_by, quantity, from_location, to_location, loan_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [movId, eqId, borrowDate, 'Peminjaman', borrowOfficer, borrowerName, borrowOfficer, 1, fromLocation, location || fromLocation, loanId]
+            );
+        }
+
+        // 5. Update histori perpindahan barang yang tetap dipertahankan (jika nama peminjam/tanggal/lokasi berubah)
+        for (const eqId of eqIdsToKeep) {
+            const loanId = currentLoans.find(l => l.inventory_id === eqId).id;
+            
+            if (location) {
+                await client.query('UPDATE inventory SET lokasi = $1 WHERE id = $2', [location, eqId]);
+            }
+
+            await client.query(
+                `UPDATE item_movements 
+                 SET movement_date = $1, to_person = $2, moved_by = $3, to_location = COALESCE($4, to_location)
+                 WHERE loan_id = $5 AND movement_type = 'Peminjaman'`,
+                [borrowDate, borrowerName, borrowOfficer, location || null, loanId]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Update loan error:', err);
+        res.status(400).json({ error: err.message || 'Gagal memperbarui peminjaman' });
+    } finally {
+        client.release();
+    }
+});
+
 app.put('/api/loans/return', async (req, res) => {
-    const { loanIds, returnDate, returnTime, returnOfficer } = req.body;
+    const { loanIds, returnDate, returnTime, returnOfficer, returnLocation, condition } = req.body;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         
         for (const loanId of loanIds) {
-            const loanRes = await client.query('SELECT inventory_id FROM loans WHERE id = $1', [loanId]);
+            const loanRes = await client.query(`
+                SELECT l.inventory_id, t.nama_peminjam, i.lokasi
+                FROM loans l
+                JOIN transactions t ON l.transaction_id = t.id
+                JOIN inventory i ON l.inventory_id = i.id
+                WHERE l.id = $1
+            `, [loanId]);
+            
             if (loanRes.rows.length > 0) {
                 const invId = loanRes.rows[0].inventory_id;
+                const borrowerName = loanRes.rows[0].nama_peminjam;
+                const fromLocation = loanRes.rows[0].lokasi || '';
+
                 await client.query(
                     'UPDATE loans SET status=$1, actual_return_date=$2, actual_return_time=$3, petugas_pengembalian=$4 WHERE id=$5',
                     ['Dikembalikan', returnDate, returnTime, returnOfficer, loanId]
                 );
-                await client.query('UPDATE inventory SET is_available = TRUE WHERE id = $1', [invId]);
+                await client.query('UPDATE inventory SET is_available = TRUE, lokasi = $1, kondisi = $2 WHERE id = $3', [returnLocation || '', condition || 'Baik', invId]);
+                
+                const movId = `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                await client.query(
+                    `INSERT INTO item_movements (id, inventory_id, movement_date, movement_type, from_person, to_person, moved_by, quantity, from_location, to_location, notes, loan_id) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                    [movId, invId, returnDate, 'Pengembalian', borrowerName, returnOfficer, returnOfficer, 1, fromLocation, returnLocation || '', `Kondisi: ${condition || 'Baik'}`, loanId]
+                );
             }
         }
 

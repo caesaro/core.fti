@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Role, Loan, Equipment } from '../types';
-import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin, Loader2 } from 'lucide-react';
+import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin, Loader2, Edit } from 'lucide-react';
 import { api } from '../services/api';
 import QRScannerModal from '../components/QRScannerModal';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
@@ -25,6 +25,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [formData, setFormData] = useState<{equipmentIds: string[], borrowerName: string, guarantee: string, nim: string, borrowDate: string, borrowTime: string, borrowOfficer: string, location: string}>({
     equipmentIds: [''],
     borrowerName: '',
@@ -113,6 +114,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
             ...prev,
             equipmentIds: [scanId]
           }));
+          setEditingTransactionId(null);
           setIsModalOpen(true);
           showToast(`Barang terdeteksi: ${item.name}`, "success");
         } else {
@@ -159,11 +161,12 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
     } catch (e) { console.error(e); }
   };
 
-  // Derived data
-  const availableEquipment = equipment.filter(e => e.isAvailable);
-
   const getEquipmentOptions = (currentSelectedId: string): SelectOption[] => {
-    return availableEquipment.map(item => ({
+    const optionsEquipment = equipment.filter(e => 
+      e.isAvailable || (editingTransactionId && formData.equipmentIds.includes(e.id))
+    );
+
+    return optionsEquipment.map(item => ({
       value: item.id,
       label: item.name,
       subLabel: item.id,
@@ -218,70 +221,14 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
           loanIds,
           returnDate, 
           returnTime, 
-          returnOfficer
+          returnOfficer,
+          returnLocation,
+          condition
         }
       });
 
       if (!resLoans.ok) throw new Error(`Gagal memproses pengembalian`);
 
-      // 2. Update item movement dan inventaris secara paralel per item
-      const updatePromises = loans.map(async (loan) => {
-        const promises = [];
-
-        // Ambil data barang saat ini untuk mengetahui lokasi terakhirnya (Lokasi Peminjaman)
-        const currentItem = equipment.find(e => e.id === loan.equipmentId);
-        
-        // History Perpindahan
-        promises.push(api('/api/item-movements', {
-          method: 'POST',
-          data: {
-            inventoryId: loan.equipmentId,
-            movementDate: returnDate,
-            movementType: 'Pengembalian' as const,
-            fromPerson: loan.borrowerName,
-            toPerson: returnOfficer,
-            movedBy: returnOfficer,
-            quantity: 1,
-            // FIX: Gunakan lokasi aktual dari inventory, bukan dari data loan yang mungkin kosong
-            fromLocation: currentItem?.location || loan.location || 'Unknown',
-            toLocation: returnLocation,
-            notes: `Kondisi: ${condition}`,
-            loanId: loan.id
-          }
-        }));
-
-        // Update Kondisi & Lokasi Barang
-        if (currentItem) {
-          const updatedItem = {
-            ...currentItem,
-            location: returnLocation,
-            condition: condition,
-            isAvailable: true // Pastikan tersedia
-          };
-
-          promises.push(api(`/api/inventory/${loan.equipmentId}`, {
-            method: 'PUT',
-            data: {
-              ukswCode: updatedItem.ukswCode,
-              name: updatedItem.name,
-              category: updatedItem.category,
-              condition: updatedItem.condition,
-              isAvailable: updatedItem.isAvailable,
-              serialNumber: updatedItem.serialNumber,
-              location: updatedItem.location
-            }
-          }));
-        }
-        
-        // Tunggu kedua request untuk item ini selesai
-        const results = await Promise.all(promises);
-        if (results.some(r => !r.ok)) {
-            throw new Error(`Gagal memperbarui data untuk barang ${loan.equipmentName}`);
-        }
-      });
-
-      // Jalankan semua update item secara paralel
-      await Promise.all(updatePromises);
       
       await fetchData();
       showToast(`${loans.length} barang berhasil dikembalikan dan perpindahan tercatat.`, "success");
@@ -334,6 +281,24 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
     }
   };
 
+  const handleEditGroup = (groupLoans: Loan[]) => {
+    const firstLoan = groupLoans[0];
+
+    setFormData({
+      equipmentIds: groupLoans.map(l => l.equipmentId),
+      borrowerName: firstLoan.borrowerName,
+      guarantee: firstLoan.guarantee,
+      nim: (firstLoan as any).nim || '',
+      borrowDate: firstLoan.borrowDate,
+      borrowTime: firstLoan.borrowTime || new Date().toTimeString().slice(0, 5),
+      borrowOfficer: firstLoan.borrowOfficer,
+      location: firstLoan.location || ''
+    });
+    setEditingTransactionId(firstLoan.transactionId);
+    setSelectedGroup(null);
+    setIsModalOpen(true);
+  };
+
   const addEquipmentRow = () => {
     setFormData(prev => ({ ...prev, equipmentIds: [...prev.equipmentIds, ''] }));
   };
@@ -369,26 +334,55 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
     }
 
     try {
-      const res = await api('/api/loans', {
-        method: 'POST',
-        data: {
-          equipmentIds: selectedIds,
-          borrowerName: formData.borrowerName,
-          nim: formData.nim,
-          guarantee: formData.guarantee,
-          borrowDate: formData.borrowDate,
-          borrowTime: formData.borrowTime,
-          borrowOfficer: formData.borrowOfficer,
-          location: formData.location
+      if (editingTransactionId) {
+        const res = await api(`/api/loans/group/${editingTransactionId}`, {
+          method: 'PUT',
+          data: {
+            equipmentIds: selectedIds,
+            borrowerName: formData.borrowerName,
+            nim: formData.nim,
+            guarantee: formData.guarantee,
+            borrowDate: formData.borrowDate,
+            borrowTime: formData.borrowTime,
+            borrowOfficer: formData.borrowOfficer,
+            location: formData.location
+          }
+        });
+        if (res.ok) {
+          fetchData();
+          showToast(`Data peminjaman berhasil diperbarui.`, "success");
+        } else {
+          const data = await res.json();
+          showToast(data.error || "Gagal memperbarui data", "error");
+          return;
         }
-      });
-      if (res.ok) {
-        fetchData();
-        showToast(`${selectedIds.length} Peminjaman berhasil dicatat.`, "success");
+      } else {
+        const res = await api('/api/loans', {
+          method: 'POST',
+          data: {
+            equipmentIds: selectedIds,
+            borrowerName: formData.borrowerName,
+            nim: formData.nim,
+            guarantee: formData.guarantee,
+            borrowDate: formData.borrowDate,
+            borrowTime: formData.borrowTime,
+            borrowOfficer: formData.borrowOfficer,
+            location: formData.location
+          }
+        });
+        if (res.ok) {
+          fetchData();
+          showToast(`${selectedIds.length} Peminjaman berhasil dicatat.`, "success");
+        } else {
+          const data = await res.json();
+          showToast(data.error || "Gagal menyimpan data", "error");
+          return;
+        }
       }
-    } catch (e) { showToast("Gagal menyimpan data", "error"); }
+    } catch (e) { showToast("Gagal menyimpan data", "error"); return; }
 
     setIsModalOpen(false);
+    setEditingTransactionId(null);
     setFormData({ 
       equipmentIds: [''], 
       borrowerName: '', 
@@ -403,6 +397,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
 
   const filteredLoans = loans.filter(loan => {
     const matchesSearch = loan.borrowerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          ((loan as any).nim && (loan as any).nim.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           loan.equipmentName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filter === 'All' || loan.status === filter;
     
@@ -451,7 +446,20 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
           <p className="text-gray-500 dark:text-gray-400 text-sm">Kelola sirkulasi peminjaman inventaris</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingTransactionId(null);
+            setFormData({ 
+              equipmentIds: [''], 
+              borrowerName: '', 
+              guarantee: 'KTM', 
+              nim: '', 
+              borrowDate: new Date().toISOString().split('T')[0],
+              borrowTime: new Date().toTimeString().slice(0, 5),
+              borrowOfficer: '',
+              location: ''
+            });
+            setIsModalOpen(true);
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm font-medium shadow-sm transition-all hover:scale-105"
         >
           <Plus className="w-4 h-4 mr-2" /> Peminjaman Baru
@@ -526,7 +534,9 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
                     className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer group"
                   >
                     <td className="px-6 py-4">
-                      <div className="text-gray-900 dark:text-white font-medium">{firstLoan.borrowerName}</div>
+                      <div className="text-gray-900 dark:text-white font-medium">
+                        {firstLoan.borrowerName} {((firstLoan as any).nim) ? `(${(firstLoan as any).nim})` : ''}
+                      </div>
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 mt-1">
                         Oleh: {firstLoan.borrowOfficer} | Jaminan: {firstLoan.guarantee}
                       </span>
@@ -589,10 +599,10 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-full sm:max-w-lg md:max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
             <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 flex-shrink-0">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center text-sm sm:text-base">
-                <Plus className="w-5 h-5 mr-2 text-blue-600" />
-                Input Peminjaman Baru
+                {editingTransactionId ? <Edit className="w-5 h-5 mr-2 text-blue-600" /> : <Plus className="w-5 h-5 mr-2 text-blue-600" />}
+                {editingTransactionId ? 'Edit Peminjaman' : 'Input Peminjaman Baru'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
+              <button onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -749,7 +759,7 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               </div>
 
               <div className="pt-4 flex justify-end space-x-3 border-t border-gray-200 dark:border-gray-700 mt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); }} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                   Batal
                 </button>
                 <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center shadow-md hover:shadow-lg transition-all">
@@ -786,7 +796,9 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               <div className="flex justify-between items-start mb-6 bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg">
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Peminjam</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">{selectedGroup.loans[0].borrowerName}</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                    {selectedGroup.loans[0].borrowerName} {((selectedGroup.loans[0] as any).nim) ? `(${(selectedGroup.loans[0] as any).nim})` : ''}
+                  </p>
                   <p className="text-xs text-gray-500 mt-1">Jaminan: {selectedGroup.loans[0].guarantee}</p>
                   {selectedGroup.loans[0].location && (
                     <p className="text-xs text-gray-500 mt-1 flex items-center">
@@ -881,14 +893,24 @@ const PeminjamanBarang: React.FC<LoansProps> = ({ role, showToast }) => {
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between">
-              <button 
-                onClick={() => handleDeleteGroup(selectedGroup.loans)}
-                disabled={isDeleting}
-                className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isDeleting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
-                {isDeleting ? 'Menghapus...' : 'Hapus Riwayat'}
-              </button>
+              <div className="flex space-x-2">
+                <button 
+                  onClick={() => handleDeleteGroup(selectedGroup.loans)}
+                  disabled={isDeleting}
+                  className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDeleting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                  {isDeleting ? 'Menghapus...' : 'Hapus Riwayat'}
+                </button>
+                {selectedGroup.loans.some(l => l.status === 'Dipinjam') && (
+                  <button 
+                    onClick={() => handleEditGroup(selectedGroup.loans)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center ml-2"
+                  >
+                    <Edit className="w-4 h-4 mr-1" /> Edit
+                  </button>
+                )}
+              </div>
               <button onClick={() => setSelectedGroup(null)} className="px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-500">
                 Tutup
               </button>

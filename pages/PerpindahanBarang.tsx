@@ -1,7 +1,7 @@
 // Page: ItemMovements (Perpindahan Barang)
 import React, { useState, useEffect } from 'react';
 import { Role, ItemMovement, Equipment } from '../types';
-import { Search, Filter, Plus, X, ArrowRightLeft, Box, Calendar, MapPin, FileText, Eye, Save, RotateCcw, ArrowUpRight, ArrowDownLeft, Hand, ChevronLeft, ChevronRight, QrCode, Loader2, Trash2 } from 'lucide-react';
+import { Search, Filter, Plus, X, ArrowRightLeft, Box, Calendar, MapPin, FileText, Eye, Save, RotateCcw, ArrowUpRight, ArrowDownLeft, Hand, ChevronLeft, ChevronRight, QrCode, Loader2, Trash2, Edit } from 'lucide-react';
 import { api } from '../services/api';
 import { TableSkeleton } from '../components/Skeleton';
 import ConfirmModal from '../components/ConfirmModal';
@@ -30,6 +30,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
   const [isUndoing, setIsUndoing] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMovementId, setEditingMovementId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     inventoryIds: [''],
     movementDate: new Date().toISOString().split('T')[0],
@@ -129,38 +130,66 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
       return;
     }
 
-    try {
-      const promises = selectedIds.map(id => {
-        const selectedEquipment = equipment.find(item => item.id === id);
-        const currentLocation = selectedEquipment?.location || formData.fromLocation;
-
-        return api('/api/item-movements', {
-          method: 'POST',
+    if (editingMovementId) {
+      try {
+        const res = await api(`/api/item-movements/${editingMovementId}`, {
+          method: 'PUT',
           data: {
-            inventoryId: id,
             movementDate: formData.movementDate,
-            movementType: formData.movementType,
             fromPerson: formData.fromPerson,
             toPerson: formData.toPerson,
             movedBy: formData.movedBy,
             quantity: formData.quantity,
-            fromLocation: currentLocation,
+            fromLocation: formData.fromLocation,
             toLocation: formData.toLocation,
             notes: formData.notes
           }
         });
-      });
-      
-      const results = await Promise.all(promises);
-      if (results.every(res => res.ok)) {
-        fetchData();
-        showToast(`${selectedIds.length} perpindahan barang berhasil dicatat.`, "success");
-        setIsModalOpen(false);
-        resetForm();
-      } else {
-        showToast("Sebagian atau seluruh data gagal disimpan", "warning");
-      }
-    } catch (e) { showToast("Gagal menyimpan data", "error"); }
+        
+        if (res.ok) {
+          fetchData();
+          showToast(`Data perpindahan berhasil diperbarui.`, "success");
+          setIsModalOpen(false);
+          resetForm();
+        } else {
+          const data = await res.json();
+          showToast(data.error || "Gagal memperbarui data", "error");
+        }
+      } catch (e) { showToast("Gagal menyimpan data", "error"); }
+    } else {
+      try {
+        const promises = selectedIds.map(id => {
+          const selectedEquipment = equipment.find(item => item.id === id);
+          const currentLocation = selectedEquipment?.location || formData.fromLocation;
+
+          return api('/api/item-movements', {
+            method: 'POST',
+            data: {
+              inventoryId: id,
+              movementDate: formData.movementDate,
+              movementType: formData.movementType,
+              fromPerson: formData.fromPerson,
+              toPerson: formData.toPerson,
+              movedBy: formData.movedBy,
+              quantity: formData.quantity,
+              fromLocation: currentLocation,
+              toLocation: formData.toLocation,
+              notes: formData.notes
+            }
+          });
+        });
+        
+        const results = await Promise.all(promises);
+        if (results.every(res => res.ok)) {
+          fetchData();
+          showToast(`${selectedIds.length} perpindahan barang berhasil dicatat.`, "success");
+          setIsModalOpen(false);
+          resetForm();
+        } else {
+          showToast("Sebagian atau seluruh data gagal disimpan", "warning");
+        }
+      } catch (e) { showToast("Gagal menyimpan data", "error"); }
+    }
   };
 
   const resetForm = () => {
@@ -176,6 +205,24 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
       toLocation: '',
       notes: ''
     });
+    setEditingMovementId(null);
+  };
+
+  const handleEditClick = (movement: ItemMovement) => {
+    setFormData({
+      inventoryIds: [movement.inventoryId],
+      movementDate: movement.movementDate || new Date().toISOString().split('T')[0],
+      movementType: movement.movementType as 'Manual',
+      fromPerson: movement.fromPerson || '',
+      toPerson: movement.toPerson || '',
+      movedBy: movement.movedBy || '',
+      quantity: movement.quantity || 1,
+      fromLocation: movement.fromLocation || '',
+      toLocation: movement.toLocation || '',
+      notes: movement.notes || ''
+    });
+    setEditingMovementId(movement.id);
+    setIsModalOpen(true);
   };
 
   const addEquipmentRow = () => {
@@ -398,6 +445,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
                 <tr key={movement.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900 dark:text-white">{movement.inventoryName || getEquipmentName(movement.inventoryId)}</div>
+                    <div className="text-xs font-mono text-blue-600 dark:text-blue-400 mt-0.5">{movement.inventoryId}</div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       {formatDateID(movement.movementDate)}
                       {movement.createdAt && ` • ${new Date(movement.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`}
@@ -429,6 +477,14 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
                           <RotateCcw className="w-4 h-4 mr-1" /> Undo
                         </button>
                       )}
+                  {movement.movementType === 'Manual' && (
+                    <button
+                      onClick={() => handleEditClick(movement)}
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center"
+                    >
+                      <Edit className="w-4 h-4 mr-1" /> Edit
+                    </button>
+                  )}
                       <button 
                         onClick={() => setSelectedMovement(movement)}
                         className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center"
@@ -467,10 +523,10 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up max-h-[90vh] flex flex-col">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
-                <ArrowRightLeft className="w-5 h-5 mr-2 text-blue-600" />
-                Input Perpindahan Manual
+                {editingMovementId ? <Edit className="w-5 h-5 mr-2 text-blue-600" /> : <ArrowRightLeft className="w-5 h-5 mr-2 text-blue-600" />}
+                {editingMovementId ? 'Edit Perpindahan Manual' : 'Input Perpindahan Manual'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -485,7 +541,8 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Daftar Barang</label>
-                  <div className="flex gap-3">
+                  {!editingMovementId && (
+                    <div className="flex gap-3">
                     <button 
                       type="button" 
                       onClick={() => {
@@ -499,47 +556,59 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
                     <button type="button" onClick={addEquipmentRow} className="text-xs text-blue-600 hover:underline flex items-center font-medium">
                       <Plus className="w-3 h-3 mr-1" /> Tambah Manual
                     </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
                   {formData.inventoryIds.map((selectedId, index) => (
                     <div key={index} className="flex gap-2 animate-fade-in-up">
-                      <SearchableSelect
-                        options={getEquipmentOptions(selectedId)}
-                        value={selectedId}
-                        onChange={(val) => {
-                          const item = equipment.find(eq => eq.id === val);
-                          updateEquipmentRow(index, val);
-                          if (index === 0 && item?.location) {
-                             setFormData(prev => ({...prev, fromLocation: item.location || prev.fromLocation}));
-                          }
-                        }}
-                        placeholder="-- Pilih Barang --"
-                        searchPlaceholder="Cari nama barang..."
-                        required
-                        className="flex-1"
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setScanningRowIndex(index);
-                          setIsScannerOpen(true);
-                        }}
-                        className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                        title="Scan QR untuk baris ini"
-                      >
-                        <QrCode className="w-4 h-4" />
-                      </button>
-                      {formData.inventoryIds.length > 1 && (
-                        <button 
-                          type="button" 
-                          onClick={() => removeEquipmentRow(index)}
-                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          title="Hapus baris"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {editingMovementId ? (
+                        <input 
+                          type="text" 
+                          disabled 
+                          value={getEquipmentName(selectedId)} 
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed flex-1" 
+                        />
+                      ) : (
+                        <>
+                          <SearchableSelect
+                            options={getEquipmentOptions(selectedId)}
+                            value={selectedId}
+                            onChange={(val) => {
+                              const item = equipment.find(eq => eq.id === val);
+                              updateEquipmentRow(index, val);
+                              if (index === 0 && item?.location) {
+                                 setFormData(prev => ({...prev, fromLocation: item.location || prev.fromLocation}));
+                              }
+                            }}
+                            placeholder="-- Pilih Barang --"
+                            searchPlaceholder="Cari nama barang..."
+                            required
+                            className="flex-1"
+                          />
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setScanningRowIndex(index);
+                              setIsScannerOpen(true);
+                            }}
+                            className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                            title="Scan QR untuk baris ini"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </button>
+                          {formData.inventoryIds.length > 1 && (
+                            <button 
+                              type="button" 
+                              onClick={() => removeEquipmentRow(index)}
+                              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                              title="Hapus baris"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
@@ -639,7 +708,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
               </div>
 
               <div className="pt-4 flex justify-end space-x-3 border-t border-gray-200 dark:border-gray-700">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                   Batal
                 </button>
                 <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center">
@@ -666,6 +735,7 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
             <div className="p-6 space-y-4">
               <div className="text-center mb-4">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedMovement.inventoryName || getEquipmentName(selectedMovement.inventoryId)}</h2>
+                <p className="text-sm font-mono text-gray-500 mt-1">{selectedMovement.inventoryId}</p>
                 <div className="mt-2">
                   {renderTypeBadge(selectedMovement.movementType)}
                 </div>
