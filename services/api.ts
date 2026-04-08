@@ -4,6 +4,11 @@ import { API_BASE_URL } from '../config';
 // Dapatkan Base URL secara dinamis saat runtime
 const getDynamicBaseUrl = () => {
   if (import.meta.env.MODE === 'production') {
+    // Jika web diakses menggunakan HTTPS (SSL), jangan paksa gunakan port 5000
+    // Biarkan Nginx sebagai Reverse Proxy yang merutekan /api ke localhost:5000
+    if (window.location.protocol === 'https:') {
+      return window.location.origin; 
+    }
     return `${window.location.protocol}//${window.location.hostname}:5000`;
   }
   return API_BASE_URL;
