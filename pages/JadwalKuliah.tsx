@@ -289,18 +289,14 @@ const handleDownloadTemplate = async () => {
     });
 
     // Add note row for guidance
-    worksheet.addRow({
-      '': 'Contoh: Jam = "07:00:09:00" atau "07:00-09:00" (format legacy sistem)',
-      '': '',
-      '': '',
-      '': 'Pastikan nama Ruang persis sama dengan di sistem (case-sensitive)',
-      '': '',
-      '': '',
-      '': '',
-      '': '',
-      '': '',
-      '': ''
-    });
+    worksheet.addRow([
+      'Contoh: Jam = "07:00:09:00" atau "07:00-09:00" (format legacy sistem)',
+      '',
+      '',
+      'Pastikan nama Ruang persis sama dengan di sistem (case-sensitive)',
+      '',
+      ''
+    ]);
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
