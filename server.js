@@ -38,6 +38,9 @@ const allowedOrigins = [
   'https://localhost:5173',
   'https://localhost:3000',
   'https://core.fti.uksw.edu',
+  'http://core.fti.uksw.edu',
+  'http://192.168.68.246',
+  'https://192.168.68.246'
 ]; // Tambahkan URL frontend production Anda di sini
 
 app.use(cors({

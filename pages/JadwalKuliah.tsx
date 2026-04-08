@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Role, Room } from '../types';
-import { Search, Plus, Filter, Edit, Trash2, X, Check, RefreshCw, Loader2, Users, BookOpen, Calendar, Clock, MapPin, Download, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, Filter, Edit, Trash2, X, Check, RefreshCw, Loader2, Users, BookOpen, Calendar, Clock, MapPin, Download, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { TableSkeleton } from '../components/Skeleton';
 import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
@@ -31,6 +31,15 @@ interface ClassSchedule {
   endDate: string;
 }
 
+interface ConflictInfo {
+  newCourseName: string;
+  newCourseCode: string;
+  existingCourseName: string;
+  existingCourseCode: string;
+  dayOfWeek: string;
+  time: string;
+}
+
 interface ClassScheduleManagementProps {
   role: Role;
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -43,6 +52,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
   const [filterDay, setFilterDay] = useState<string>('All');
   const [filterSemester, setFilterSemester] = useState<string>('');
   const [filterLecturer, setFilterLecturer] = useState<string>('');
+  const [filterRoom, setFilterRoom] = useState<string>('All');
   const [filterAcademicYear, setFilterAcademicYear] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -64,8 +74,34 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
     endDate: ''    // Tanggal selesai periode semester
   });
 
+  const [conflictModal, setConflictModal] = useState<{
+    isOpen: boolean;
+    conflicts: ConflictInfo[];
+    onConfirm: () => void;
+    onCancel: () => void;
+    pendingSchedules?: any[]; // Added for bulk flow
+  }>({ isOpen: false, conflicts: [], onConfirm: () => {}, onCancel: () => {}, pendingSchedules: [] });
+
+  // Bulk fields modal state
+  const [bulkModal, setBulkModal] = useState<{
+    isOpen: boolean;
+    pendingSchedules: any[];
+    unmatchedRooms: Set<string>;
+  }>({ isOpen: false, pendingSchedules: [], unmatchedRooms: new Set() });
+
+  const [bulkFormData, setBulkFormData] = useState({
+    semester: 'Ganjil' as 'Ganjil' | 'Antara' | 'Genap',
+    academicYear: '2024/2025',
+    startDate: '',
+    endDate: ''
+  });
+
   // Google Calendar API
   const googleApi = useGoogleCalendar(role, showToast);
+
+  const canManage = role.toString().toUpperCase() === 'ADMIN' || 
+                    role.toString().toUpperCase() === 'LABORAN' || 
+                    role.toString().toUpperCase() === 'SUPERVISOR';
 
   const getCalendarId = (input: string) => {
     if (!input) return null;
@@ -80,19 +116,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
   const semesters = ['Ganjil', 'Antara', 'Genap'];
   
   // Academic years
-  const [academicYears, setAcademicYears] = useState<string[]>(() => {
-    const defaultYears = ['2023/2024', '2024/2025', '2025/2026', '2026/2027'];
-    const saved = localStorage.getItem('customAcademicYears');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return Array.from(new Set([...defaultYears, ...parsed])).sort((a, b) => b.localeCompare(a));
-      } catch (e) {
-        return defaultYears.sort((a, b) => b.localeCompare(a));
-      }
-    }
-    return defaultYears.sort((a, b) => b.localeCompare(a));
-  });
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
 
   const fetchSchedules = async () => {
     setIsLoading(true);
@@ -105,6 +129,11 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
       if (response.ok) {
         const data = await response.json();
         setSchedules(data);
+        
+        setAcademicYears(prev => {
+          const fetchedYears = data.map((s: ClassSchedule) => s.academicYear).filter(Boolean);
+          return Array.from(new Set([...prev, ...fetchedYears])).sort((a, b) => b.localeCompare(a));
+        });
       }
     } catch (error) {
       console.error("Error fetching class schedules:", error);
@@ -140,7 +169,8 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
       schedule.courseName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDay = filterDay === 'All' || schedule.dayOfWeek === filterDay;
     const matchesLecturer = !filterLecturer || (schedule.lecturerName && schedule.lecturerName.toLowerCase().includes(filterLecturer.toLowerCase()));
-    return matchesSearch && matchesDay && matchesLecturer;
+    const matchesRoom = filterRoom === 'All' || schedule.roomId === filterRoom;
+    return matchesSearch && matchesDay && matchesLecturer && matchesRoom;
   });
 
   const handleOpenModal = (schedule?: ClassSchedule) => {
@@ -170,7 +200,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
         startTime: '08:00',
         endTime: '10:00',
         semester: filterSemester || 'Ganjil',
-        academicYear: filterAcademicYear || '2024/2025',
+        academicYear: filterAcademicYear || (academicYears.length > 0 ? academicYears[0] : '2024/2025'),
         roomId: '',
         lecturerName: '',
         startDate: '',
@@ -180,37 +210,96 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
     setIsModalOpen(true);
   };
 
-  const handleDownloadTemplate = async () => {
+  const checkConflict = (newSchedule: any, existingSchedules: any[], currentEditId?: string | null) => {
+    return existingSchedules.find(existing => {
+      if (currentEditId && currentEditId === existing.id) return false;
+
+      if (existing.roomId === newSchedule.roomId &&
+          existing.dayOfWeek === newSchedule.dayOfWeek &&
+          existing.semester === newSchedule.semester &&
+          existing.academicYear === newSchedule.academicYear) {
+        
+        const newStart = newSchedule.startTime;
+        const newEnd = newSchedule.endTime;
+        const existStart = existing.startTime;
+        const existEnd = existing.endTime;
+
+        if (newStart < existEnd && newEnd > existStart) {
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+
+// Helper to parse legacy Jam format to startTime/endTime (used in handleExcelUpload)
+  const parseJamToTimes = (jamStr: string): { startTime: string; endTime: string } | null => {
+    if (!jamStr || typeof jamStr !== 'string') return null;
+    
+    const cleaned = jamStr.trim().replace(/\s+/g, '');
+    let times: string[];
+    
+    // Handle : separator (07:00:09:00)
+    if (cleaned.includes(':')) {
+      const parts = cleaned.split(':');
+      if (parts.length >= 4) {
+        const start = `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+        const end = `${parts[2].padStart(2, '0')}:${parts[3].padStart(2, '0')}`;
+        return { startTime: start, endTime: end };
+      }
+    }
+    
+    // Handle - separator (07:00-09:00)
+    if (cleaned.includes('-')) {
+      times = cleaned.split('-');
+      if (times.length === 2) {
+        const start = times[0].trim().slice(0, 5);
+        const end = times[1].trim().slice(0, 5);
+        if (start.length === 5 && end.length === 5 && start.match(/^[\d]{2}:[\d]{2}$/) && end.match(/^[\d]{2}:[\d]{2}$/)) {
+          return { startTime: start, endTime: end };
+        }
+      }
+    }
+    
+    return null;
+  };
+
+const handleDownloadTemplate = async () => {
     const ExcelJS = (await import('exceljs')).default;
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Template Jadwal Kuliah');
 
+    // New headers matching legacy system exactly
     worksheet.columns = [
-      { header: 'courseCode', key: 'courseCode', width: 15 },
-      { header: 'courseName', key: 'courseName', width: 30 },
-      { header: 'dayOfWeek', key: 'dayOfWeek', width: 15 },
-      { header: 'startTime', key: 'startTime', width: 15 },
-      { header: 'endTime', key: 'endTime', width: 15 },
-      { header: 'semester', key: 'semester', width: 15 },
-      { header: 'academicYear', key: 'academicYear', width: 20 },
-      { header: 'roomName', key: 'roomName', width: 25 },
-      { header: 'lecturerName', key: 'lecturerName', width: 30 },
-      { header: 'startDate', key: 'startDate', width: 20 },
-      { header: 'endDate', key: 'endDate', width: 20 },
+      { header: 'Kode', key: 'Kode', width: 15 },
+      { header: 'Nama Matakuliah', key: 'Nama Matakuliah', width: 35 },
+      { header: 'Hari', key: 'Hari', width: 12 },
+      { header: 'Jam', key: 'Jam', width: 18 }, // Format: 07:00:09:00 atau 07:00-09:00
+      { header: 'Pengajar', key: 'Pengajar', width: 30 },
+      { header: 'Ruang', key: 'Ruang', width: 25 }
     ];
 
     worksheet.addRow({
-      courseCode: "TI401",
-      courseName: "Jaringan Komputer",
-      dayOfWeek: "Senin",
-      startTime: "08:00",
-      endTime: "10:00",
-      semester: "Ganjil",
-      academicYear: "2024/2025",
-      roomName: rooms[0]?.name || "FTI 227 (sesuaikan dengan nama ruangan yang ada di sistem)",
-      lecturerName: "John Doe, M.Kom",
-      startDate: "2025-08-18",
-      endDate: "2025-12-12"
+      Kode: "TI401",
+      'Nama Matakuliah': "Jaringan Komputer", 
+      Hari: "Senin",
+      Jam: "07:00:09:00", // Legacy format: start:end atau start-end
+      Pengajar: "John Doe, M.Kom",
+      Ruang: rooms[0]?.name || "FTI 227 (exact nama ruangan dari sistem)"
+    });
+
+    // Add note row for guidance
+    worksheet.addRow({
+      '': 'Contoh: Jam = "07:00:09:00" atau "07:00-09:00" (format legacy sistem)',
+      '': '',
+      '': '',
+      '': 'Pastikan nama Ruang persis sama dengan di sistem (case-sensitive)',
+      '': '',
+      '': '',
+      '': '',
+      '': '',
+      '': '',
+      '': ''
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -221,6 +310,69 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
     a.download = 'template_jadwal_kuliah.xlsx';
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+
+  const performImport = async (newSchedules: any[], unmatchedRooms: Set<string>) => {
+    setIsLoading(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const schedule of newSchedules) {
+      try {
+        const res = await api('/api/class-schedules', { method: 'POST', data: schedule });
+        if (res.ok) {
+          successCount++;
+          if (schedule.academicYear && !academicYears.includes(schedule.academicYear)) {
+            setAcademicYears(prev => {
+              return Array.from(new Set([...prev, schedule.academicYear])).sort((a, b) => b.localeCompare(a));
+            });
+          }
+          const room = rooms.find(r => r.id === schedule.roomId);
+          if (room && room.googleCalendarUrl && schedule.startDate && schedule.endDate) {
+            const calendarId = getCalendarId(room.googleCalendarUrl);
+            if (calendarId && googleApi.isGapiInitialized && googleApi.isAuthenticated) {
+              const dayMap: Record<string, number> = { 'Minggu': 0, 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6 };
+              const targetDay = dayMap[schedule.dayOfWeek] ?? 1;
+              const semesterStart = new Date(schedule.startDate);
+              let distance = targetDay - semesterStart.getDay();
+              if (distance < 0) distance += 7;
+              const firstClassDate = new Date(semesterStart);
+              firstClassDate.setDate(semesterStart.getDate() + distance);
+              const dateStr = firstClassDate.toISOString().split('T')[0];
+              const startDateTime = new Date(`${dateStr}T${schedule.startTime}:00`);
+              const endDateTime = new Date(`${dateStr}T${schedule.endTime}:00`);
+              const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+              const semesterEnd = new Date(schedule.endDate);
+              semesterEnd.setUTCHours(23, 59, 59, 999);
+              const untilStr = semesterEnd.toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z';
+              const eventResource = { summary: `${schedule.courseCode} ${schedule.courseName}-${schedule.lecturerName || ''}`, location: room.name, description: `Mata Kuliah: ${schedule.courseName}\nKode: ${schedule.courseCode}\nDosen: ${schedule.lecturerName || '-'}\nSemester: ${schedule.semester} ${schedule.academicYear}\n\nDiinput via CORE.FTI`, start: { dateTime: startDateTime.toISOString(), timeZone: userTimeZone }, end: { dateTime: endDateTime.toISOString(), timeZone: userTimeZone }, recurrence: [`RRULE:FREQ=WEEKLY;UNTIL=${untilStr}`] };
+              await googleApi.createEvent(calendarId, eventResource);
+            }
+          }
+        } else {
+          errorCount++;
+        }
+      } catch (err) {
+        errorCount++;
+      }
+    }
+
+    await fetchSchedules();
+    if (successCount > 0 && errorCount === 0) {
+      showToast(`Berhasil mengimport ${successCount} jadwal kelas.`, "success");
+    } else if (successCount > 0 && errorCount > 0) {
+      showToast(`Berhasil ${successCount} jadwal. Gagal ${errorCount} jadwal.`, "warning");
+    } else {
+      showToast("Gagal mengimport data.", "error");
+    }
+    
+    if (unmatchedRooms.size > 0) {
+      setTimeout(() => {
+        showToast(`Peringatan: Beberapa jadwal ditolak karena ruangan (${Array.from(unmatchedRooms).join(', ')}) tidak ditemukan di sistem.`, "warning");
+      }, 500);
+    }
+    setIsLoading(false);
   };
 
   const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,15 +409,20 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
             if (header) {
               let cellValue = cell.value;
               if (cellValue instanceof Date) {
-                if (header === 'startTime' || header === 'endTime') {
-                  const hh = String(cellValue.getUTCHours()).padStart(2, '0');
-                  const min = String(cellValue.getUTCMinutes()).padStart(2, '0');
-                  cellValue = `${hh}:${min}`;
-                } else {
-                  const yyyy = cellValue.getFullYear();
-                  const mm = String(cellValue.getMonth() + 1).padStart(2, '0');
-                  const dd = String(cellValue.getDate()).padStart(2, '0');
-                  cellValue = `${yyyy}-${mm}-${dd}`;
+                // ExcelJS already converts Excel dates to JS Date objects
+                // But users may have DD/MM/YYYY text - handle both
+                const yyyy = cellValue.getFullYear();
+                const mm = String(cellValue.getMonth() + 1).padStart(2, '0');
+                const dd = String(cellValue.getDate()).padStart(2, '0');
+                cellValue = `${yyyy}-${mm}-${dd}`;
+              } else if (typeof cellValue === 'string') {
+                // Handle common DD/MM/YYYY or DD-MM-YYYY formats
+                const dateMatch = cellValue.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+                if (dateMatch) {
+                  const [, day, month, year] = dateMatch;
+                  const dd = day.padStart(2, '0');
+                  const mm = month.padStart(2, '0');
+                  cellValue = `${year}-${mm}-${dd}`;
                 }
               } else if (cellValue && typeof cellValue === 'object' && 'result' in cellValue) {
                 cellValue = (cellValue as any).result;
@@ -274,105 +431,99 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
             }
           });
 
-          if (rowData.courseCode && rowData.courseName) {
+          // Map Indonesian headers to internal fields (legacy format)
+          const courseCode = rowData['Kode'] || rowData['kode'] || '';
+          const courseName = rowData['Nama Matakuliah'] || rowData['nama matakuliah'] || '';
+          const dayOfWeek = rowData['Hari'] || rowData['hari'] || '';
+          const jam = rowData['Jam'] || rowData['jam'] || '';
+          const lecturerName = rowData['Pengajar'] || rowData['pengajar'] || '';
+          const roomName = rowData['Ruang'] || rowData['ruang'] || '';
+          const semester = rowData['Semester'] || rowData['semester'] || '';
+          const academicYear = rowData['Tahun Ajaran'] || rowData['tahun ajaran'] || '';
+          const startDate = rowData['Tanggal Mulai'] || rowData['tanggal mulai'] || '';
+          const endDate = rowData['Tanggal Selesai'] || rowData['tanggal selesai'] || '';
+          
+          if (courseCode && courseName) {
+            // Parse Jam column
+            const times = parseJamToTimes(jam);
+            if (!times) {
+              console.warn(`Invalid Jam format in row ${rowNumber}: "${jam}"`);
+              return;
+            }
+
             // Pencocokan otomatis nama ruangan ke ID Ruangan
             let matchedRoomId = '';
-            let isValidRoom = false;
             
-            if (rowData.roomName) {
-              const searchName = String(rowData.roomName).toLowerCase().trim();
+            if (roomName) {
+              const searchName = String(roomName).toLowerCase().trim();
               const foundRoom = rooms.find(r => r.name.toLowerCase().trim() === searchName);
               if (foundRoom) {
                 matchedRoomId = foundRoom.id;
-                isValidRoom = true;
               } else {
-                unmatchedRooms.add(String(rowData.roomName).trim());
+                unmatchedRooms.add(String(roomName).trim());
               }
             }
 
-            // Hanya tambahkan jadwal jika ruangan valid dan ditemukan
-            if (isValidRoom) {
-              newSchedules.push({
-                courseCode: rowData.courseCode,
-                courseName: rowData.courseName,
-                classGroup: '-',
-                dayOfWeek: rowData.dayOfWeek || 'Senin',
-                startTime: rowData.startTime || '08:00',
-                endTime: rowData.endTime || '10:00',
-                semester: rowData.semester || 'Ganjil',
-                academicYear: rowData.academicYear || '2024/2025',
-                roomId: matchedRoomId,
-                lecturerName: rowData.lecturerName || '',
-                startDate: rowData.startDate || '',
-                endDate: rowData.endDate || ''
-              });
-            }
+            newSchedules.push({
+              courseCode,
+              courseName,
+              classGroup: '-',
+              dayOfWeek: dayOfWeek || 'Senin',
+              startTime: times.startTime || '08:00',
+              endTime: times.endTime || '10:00',
+              semester: semester || 'Ganjil',
+              academicYear: academicYear || '2024/2025',
+              roomId: matchedRoomId,
+              lecturerName,
+              startDate,
+              endDate
+            });
           }
         });
 
         if (newSchedules.length > 0) {
-          setIsLoading(true);
-          let successCount = 0;
-          let errorCount = 0;
+          const conflicts: ConflictInfo[] = [];
+          const virtualSchedules = [...schedules];
 
-          for (const schedule of newSchedules) {
-            try {
-              const res = await api('/api/class-schedules', { method: 'POST', data: schedule });
-              if (res.ok) {
-                successCount++;
-                
-                if (schedule.academicYear && !academicYears.includes(schedule.academicYear)) {
-                  setAcademicYears(prev => {
-                    const newYears = Array.from(new Set([...prev, schedule.academicYear])).sort((a, b) => b.localeCompare(a));
-                    localStorage.setItem('customAcademicYears', JSON.stringify(newYears));
-                    return newYears;
-                  });
-                }
-                
-                const room = rooms.find(r => r.id === schedule.roomId);
-                if (room && room.googleCalendarUrl && schedule.startDate && schedule.endDate) {
-                  const calendarId = getCalendarId(room.googleCalendarUrl);
-                  if (calendarId && googleApi.isGapiInitialized && googleApi.isAuthenticated) {
-                    const dayMap: Record<string, number> = { 'Minggu': 0, 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6 };
-                    const targetDay = dayMap[schedule.dayOfWeek] ?? 1;
-                    const semesterStart = new Date(schedule.startDate);
-                    let distance = targetDay - semesterStart.getDay();
-                    if (distance < 0) distance += 7;
-                    const firstClassDate = new Date(semesterStart);
-                    firstClassDate.setDate(semesterStart.getDate() + distance);
-                    const dateStr = firstClassDate.toISOString().split('T')[0];
-                    const startDateTime = new Date(`${dateStr}T${schedule.startTime}:00`);
-                    const endDateTime = new Date(`${dateStr}T${schedule.endTime}:00`);
-                    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    const semesterEnd = new Date(schedule.endDate);
-                    semesterEnd.setUTCHours(23, 59, 59, 999);
-                    const untilStr = semesterEnd.toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z';
-                    const eventResource = { summary: `${schedule.courseCode} ${schedule.courseName}-${schedule.lecturerName || ''}`, location: room.name, description: `Mata Kuliah: ${schedule.courseName}\nKode: ${schedule.courseCode}\nDosen: ${schedule.lecturerName || '-'}\nSemester: ${schedule.semester} ${schedule.academicYear}\n\nDiinput via CORE.FTI`, start: { dateTime: startDateTime.toISOString(), timeZone: userTimeZone }, end: { dateTime: endDateTime.toISOString(), timeZone: userTimeZone }, recurrence: [`RRULE:FREQ=WEEKLY;UNTIL=${untilStr}`] };
-                    await googleApi.createEvent(calendarId, eventResource);
-                  }
-                }
-              } else {
-                errorCount++;
-              }
-            } catch (err) {
-              errorCount++;
+          for (const ns of newSchedules) {
+            const conflict = checkConflict(ns, virtualSchedules, null); // Ignore semester/year for core conflict check
+            if (conflict) {
+              conflicts.push({
+                newCourseName: ns.courseName,
+                newCourseCode: ns.courseCode,
+                existingCourseName: conflict.courseName,
+                existingCourseCode: conflict.courseCode,
+                dayOfWeek: ns.dayOfWeek,
+                time: `${ns.startTime} - ${ns.endTime}`
+              });
             }
+            virtualSchedules.push(ns);
           }
 
-          await fetchSchedules();
-          if (successCount > 0 && errorCount === 0) {
-            showToast(`Berhasil mengimport ${successCount} jadwal kelas.`, "success");
-          } else if (successCount > 0 && errorCount > 0) {
-            showToast(`Berhasil ${successCount} jadwal. Gagal ${errorCount} jadwal.`, "warning");
+          if (conflicts.length > 0) {
+            setConflictModal({
+              isOpen: true,
+              conflicts,
+              onConfirm: () => {
+                setConflictModal(prev => ({ ...prev, isOpen: false }));
+                // Go to bulk modal instead of direct import
+                setBulkModal({
+                  isOpen: true,
+                  pendingSchedules: newSchedules,
+                  unmatchedRooms
+                });
+              },
+              onCancel: () => {
+                setConflictModal(prev => ({ ...prev, isOpen: false }));
+              },
+              pendingSchedules: newSchedules // Pass for reference
+            });
           } else {
-            showToast("Gagal mengimport data.", "error");
-          }
-          
-          // Tampilkan peringatan jika ada ruangan yang tidak ditemukan
-          if (unmatchedRooms.size > 0) {
-            setTimeout(() => {
-              showToast(`Peringatan: Beberapa jadwal ditolak karena ruangan (${Array.from(unmatchedRooms).join(', ')}) tidak ditemukan di sistem.`, "warning");
-            }, 500);
+              setBulkModal({
+                isOpen: true,
+                pendingSchedules: newSchedules,
+                unmatchedRooms
+              });
           }
         } else {
           showToast("Tidak ada data valid yang diimport.", "warning");
@@ -394,20 +545,11 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
     subLabel: r.category
   }));
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validasi Waktu
-    if (formData.endTime <= formData.startTime) {
-      showToast('Jam selesai harus lebih besar dari jam mulai.', 'warning');
-      return;
-    }
-    
-    // Simpan tahun akademik baru ke local storage dan state jika belum ada
+  const performSave = async () => {
+    // Simpan tahun akademik baru ke state jika belum ada
     if (formData.academicYear && !academicYears.includes(formData.academicYear)) {
       const updatedYears = Array.from(new Set([...academicYears, formData.academicYear])).sort((a, b) => b.localeCompare(a));
       setAcademicYears(updatedYears);
-      localStorage.setItem('customAcademicYears', JSON.stringify(updatedYears));
     }
     
     try {
@@ -443,7 +585,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
                       await googleApi.deleteEvent(oldCalendarId, response.result.items[0].id);
                     }
                   } catch (e) {
-                    console.error("Gagal hapus event lama di GCal", e);
+                    console.error("Gagal hapus event lama di Google Calendar", e);
                   }
                 }
               }
@@ -474,7 +616,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
                     await googleApi.createEvent(newCalendarId, eventResource);
                     showToast('Jadwal di Google Calendar telah disinkronkan.', 'info');
                   } catch (e) {
-                    console.error("Gagal buat event baru di GCal", e);
+                    console.error("Gagal buat event baru di Google Calendar", e);
                     showToast('Gagal membuat jadwal di Google Calendar ruangan.', 'error');
                   }
                 }
@@ -535,6 +677,36 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
     }
   };
 
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validasi Waktu
+    if (formData.endTime <= formData.startTime) {
+      showToast('Jam selesai harus lebih besar dari jam mulai.', 'warning');
+      return;
+    }
+    
+    const conflict = checkConflict(formData, schedules, editingSchedule?.id);
+    if (conflict) {
+      setConflictModal({
+        isOpen: true,
+        conflicts: [{
+          newCourseName: formData.courseName,
+          newCourseCode: formData.courseCode,
+          existingCourseName: conflict.courseName,
+          existingCourseCode: conflict.courseCode,
+          dayOfWeek: formData.dayOfWeek,
+          time: `${formData.startTime} - ${formData.endTime}`
+        }],
+        onConfirm: () => { setConflictModal(prev => ({ ...prev, isOpen: false })); performSave(); },
+        onCancel: () => { setConflictModal(prev => ({ ...prev, isOpen: false })); }
+      });
+      return;
+    }
+
+    performSave();
+  };
+
   const handleDelete = async (id: string) => {
     const scheduleToDelete = schedules.find(s => s.id === id);
     if (window.confirm("Apakah Anda yakin ingin menghapus jadwal kelas ini?")) {
@@ -558,7 +730,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
                   showToast('Jadwal terkait di Google Calendar juga telah dihapus.', 'info');
                 }
               } catch (e) {
-                console.error("Gagal hapus dari GCal", e);
+                console.error("Gagal hapus dari Google Calendar", e);
                 showToast('Gagal menghapus jadwal dari Google Calendar.', 'error');
               }
             }
@@ -588,6 +760,16 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
           <p className="text-gray-500 dark:text-gray-400 text-sm">Kelola jadwal mata kuliah per semester</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canManage && googleApi.isGapiInitialized && !googleApi.isAuthenticated && (
+            <button onClick={() => googleApi.login()} className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
+              <Calendar className="w-4 h-4 mr-2" /> Login Google Calendar
+            </button>
+          )}
+          {canManage && googleApi.isAuthenticated && (
+            <div className="px-3 py-2 bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400 rounded-lg text-sm font-medium flex items-center shadow-sm">
+              <Check className="w-4 h-4 mr-2" /> Google Calendar Terhubung
+            </div>
+          )}
           <button onClick={handleDownloadTemplate} className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center shadow-sm transition-all hover:scale-105">
             <Download className="w-4 h-4 mr-2" /> Template
           </button>
@@ -625,6 +807,20 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
              
              <div className="flex items-center space-x-2">
                 <Filter className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-500">Ruangan:</span>
+                <select 
+                    value={filterRoom}
+                    onChange={(e) => setFilterRoom(e.target.value)}
+                    className="px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer w-24 sm:w-auto"
+                >
+                    <option value="All">Semua</option>
+                    {rooms.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                </select>
+             </div>
+             
+             <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-500">Semester:</span>
                 <select 
                     value={filterSemester}
@@ -682,7 +878,7 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
               </div>
               <div className="p-2 space-y-2 max-h-[400px] overflow-y-auto">
                 {daySchedules.length > 0 ? daySchedules.map(schedule => (
-                  <div key={schedule.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 hover:shadow-md transition-shadow">
+                  <div key={schedule.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 hover:shadow-md hover:bg-blue-50 dark:hover:bg-gray-600 transition-all duration-200 border border-transparent hover:border-blue-200 dark:hover:border-gray-500">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{schedule.courseCode}</span>
@@ -880,6 +1076,129 @@ const JadwalKuliah: React.FC<ClassScheduleManagementProps> = ({ role, showToast 
                  </div>
               </form>
            </div>
+        </div>
+      )}
+
+      {bulkModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center">
+              <h3 className="font-bold text-gray-900 dark:text-white">Lengkapi Data Import</h3>
+              <button onClick={() => setBulkModal(prev => ({ ...prev, isOpen: false }))} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              
+              if (canManage && googleApi.isGapiInitialized && !googleApi.isAuthenticated) {
+                googleApi.login();
+                showToast("Silakan login ke Google Calendar terlebih dahulu sebelum mengeksekusi import data.", "info");
+                return;
+              }
+
+              const finalSchedules = bulkModal.pendingSchedules.map(s => ({
+                ...s,
+                semester: s.semester || bulkFormData.semester,
+                academicYear: s.academicYear || bulkFormData.academicYear,
+                startDate: s.startDate || bulkFormData.startDate,
+                endDate: s.endDate || bulkFormData.endDate
+              }));
+              setBulkModal(prev => ({ ...prev, isOpen: false }));
+              performImport(finalSchedules, bulkModal.unmatchedRooms);
+            }} className="p-6 space-y-4">
+              {bulkModal.unmatchedRooms.size > 0 && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-400 font-medium">Beberapa ruangan tidak ditemukan:</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-500 mt-1">{Array.from(bulkModal.unmatchedRooms).join(', ')}</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-500 mt-1">Jadwal ini akan tetap diimport tanpa ruangan.</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Semester Default</label>
+                  <select 
+                      value={bulkFormData.semester}
+                      onChange={e => setBulkFormData({...bulkFormData, semester: e.target.value as any})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  >
+                      {semesters.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tahun Akademik Default</label>
+                  <input 
+                      type="text" required 
+                      list="academic-years-list"
+                      value={bulkFormData.academicYear}
+                      onChange={e => setBulkFormData({...bulkFormData, academicYear: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="Contoh: 2024/2025"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tgl Mulai Periode Default</label>
+                  <input 
+                      type="date" required 
+                      value={bulkFormData.startDate} 
+                      onChange={e => setBulkFormData({...bulkFormData, startDate: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tgl Selesai Periode Default</label>
+                  <input 
+                      type="date" required 
+                      value={bulkFormData.endDate} 
+                      onChange={e => setBulkFormData({...bulkFormData, endDate: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 italic mt-2">
+                *Nilai default ini hanya digunakan jika kolom di Excel kosong.
+              </p>
+              <div className="pt-4 flex justify-end space-x-3 border-t border-gray-200 dark:border-gray-700 mt-4">
+                <button type="button" onClick={() => setBulkModal(prev => ({ ...prev, isOpen: false }))} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
+                <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center shadow-md">
+                  Import {bulkModal.pendingSchedules.length} Jadwal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {conflictModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-700 animate-fade-in-up">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+              <h3 className="font-bold text-yellow-800 dark:text-yellow-400 flex items-center">
+                <AlertTriangle className="w-5 h-5 mr-2" /> Konflik Jadwal Terdeteksi
+              </h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Ditemukan {conflictModal.conflicts.length} jadwal yang berbenturan waktu dan ruangan:
+              </p>
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                {conflictModal.conflicts.map((c, i) => (
+                  <div key={i} className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600 text-sm">
+                    <p className="font-medium text-gray-900 dark:text-white mb-1"><span className="text-blue-600 dark:text-blue-400">{c.newCourseCode}</span> {c.newCourseName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Bentrok dengan: <span className="font-medium text-red-500">{c.existingCourseCode} {c.existingCourseName}</span></p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Waktu: {c.dayOfWeek}, {c.time}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300 pt-2">Apakah Anda ingin tetap menyimpan jadwal ini?</p>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={conflictModal.onCancel} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Batal</button>
+                <button onClick={conflictModal.onConfirm} className="px-4 py-2 text-sm bg-yellow-600 text-white hover:bg-yellow-700 rounded-lg shadow-md flex items-center">Ya, Lanjutkan</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

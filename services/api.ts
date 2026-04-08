@@ -1,10 +1,18 @@
 import { Loan, Equipment, LabStaff } from '../types';
 import { API_BASE_URL } from '../config';
 
+// Dapatkan Base URL secara dinamis saat runtime
+const getDynamicBaseUrl = () => {
+  if (import.meta.env.MODE === 'production') {
+    return `${window.location.protocol}//${window.location.hostname}:5000`;
+  }
+  return API_BASE_URL;
+};
+
 export const api = async (endpoint: string, options: RequestInit & { data?: any } = {}) => {
   // Pastikan format endpoint selalu valid (diawali garis miring)
   const formattedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${API_BASE_URL}${formattedEndpoint}`;
+  const url = `${getDynamicBaseUrl()}${formattedEndpoint}`;
   
   // Mengambil token JWT hasil login dari localStorage
   const token = localStorage.getItem('authToken');
@@ -64,4 +72,3 @@ export const staffApi = {
 };
 
 export default api;
-
