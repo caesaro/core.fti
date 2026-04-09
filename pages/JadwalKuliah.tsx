@@ -683,6 +683,12 @@ const handleDownloadTemplate = async () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validasi Format Tahun Akademik
+    if (!/^\d{4}\/\d{4}$/.test(formData.academicYear)) {
+      showToast('Format Tahun Akademik harus YYYY/YYYY (contoh: 2024/2025).', 'warning');
+      return;
+    }
+
     // Validasi Waktu
     if (formData.endTime <= formData.startTime) {
       showToast('Jam selesai harus lebih besar dari jam mulai.', 'warning');
@@ -802,6 +808,12 @@ const handleDownloadTemplate = async () => {
 
   return (
     <div className="space-y-6">
+      <datalist id="academic-years-list">
+        {academicYears.map(ay => (
+          <option key={ay} value={ay} />
+        ))}
+      </datalist>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Jadwal Kuliah</h1>
@@ -1083,17 +1095,17 @@ const handleDownloadTemplate = async () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tahun Akademik</label>
-                     <select 
+                     <input 
+                         type="text"
+                         list="academic-years-list"
                          required 
                          value={formData.academicYear}
                          onChange={e => setFormData({...formData, academicYear: e.target.value})}
+                         pattern="\d{4}/\d{4}"
+                         title="Format harus YYYY/YYYY (contoh: 2024/2025)"
                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                     >
-                         <option value="">-- Pilih Tahun --</option>
-                         {academicYears.map(ay => (
-                           <option key={ay} value={ay}>{ay}</option>
-                         ))}
-                     </select>
+                         placeholder="Contoh: 2024/2025"
+                     />
                     </div>
                  </div>
                  
@@ -1160,6 +1172,11 @@ const handleDownloadTemplate = async () => {
                 return;
               }
 
+              if (!/^\d{4}\/\d{4}$/.test(bulkFormData.academicYear)) {
+                showToast('Format Tahun Akademik Default harus YYYY/YYYY (contoh: 2024/2025).', 'warning');
+                return;
+              }
+
               const finalSchedules = bulkModal.pendingSchedules.map(s => ({
                 ...s,
                 semester: s.semester || bulkFormData.semester,
@@ -1190,17 +1207,17 @@ const handleDownloadTemplate = async () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tahun Akademik Default</label>
-                  <select 
+                  <input 
+                      type="text"
+                      list="academic-years-list"
                       required 
                       value={bulkFormData.academicYear}
                       onChange={e => setBulkFormData({...bulkFormData, academicYear: e.target.value})}
+                      pattern="\d{4}/\d{4}"
+                      title="Format harus YYYY/YYYY (contoh: 2024/2025)"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                  >
-                      <option value="">-- Pilih Tahun --</option>
-                      {academicYears.map(ay => (
-                        <option key={ay} value={ay}>{ay}</option>
-                      ))}
-                  </select>
+                      placeholder="Contoh: 2024/2025"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
