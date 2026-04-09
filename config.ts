@@ -6,6 +6,5 @@ export const INSTITUTION_NAME = "Fakultas Teknologi Informasi - UKSW";
 
 // Logika API URL Dinamis:
 // 1. Gunakan nilai dari .env jika ada
-// 2. Di Production, gunakan string kosong "" (browser otomatis pakai domain saat ini)
-// 3. Di Development, gunakan localhost:5000
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:5000");
+// 2. Jika tidak di-set di .env, otomatis deteksi IP/Domain yang sedang diakses dan arahkan ke port 5000
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
