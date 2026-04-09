@@ -57,8 +57,8 @@ app.use(cors({
 }));
 
 // 3. Body Parser
-app.use(express.json({ limit: '200mb' })); // Tingkatkan limit ke 200mb untuk gambar 360 resolusi tinggi
-app.use(express.urlencoded({ extended: true, limit: '200mb' })); // Tambahkan juga limit untuk urlencoded
+app.use(express.json({ limit: '20mb' })); // Tingkatkan limit ke 20mb untuk gambar 360 resolusi tinggi
+app.use(express.urlencoded({ extended: true, limit: '20mb' })); // Tambahkan juga limit untuk urlencoded
 
 // Konfigurasi Upload (Simpan sementara di folder uploads/)
 const upload = multer({ dest: 'uploads/' });
@@ -161,7 +161,7 @@ createIndexes();
 // Ditingkatkan limitnya untuk mengakomodasi multiple device scenario
 const apiLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 menit
-	max: 200, // Ditingkatkan dari 100 ke 200 untuk mengakomodasi lebih banyak request
+	max: 20, // Ditingkatkan 20 untuk mengakomodasi lebih banyak request
 	standardHeaders: true, 
 	legacyHeaders: false, 
   message: { error: 'Terlalu banyak request, silakan coba lagi setelah 15 menit.' }
@@ -584,6 +584,31 @@ app.post('/api/auth/google', async (req, res) => {
       error: 'Terjadi kesalahan saat login dengan Google.',
       details: err.message 
     });
+  }
+});
+
+// **[BARU]** Endpoint Verify Session (Silent Verification)
+app.get('/api/auth/verify', async (req, res) => {
+  try {
+    // Token sudah divalidasi oleh middleware verifyToken
+    // Cek kembali status user di database untuk memastikan akun belum dinonaktifkan
+    const userCheck = await pool.query('SELECT id, nama, role, status FROM users WHERE id = $1', [req.user.id]);
+    
+    if (userCheck.rows.length === 0 || userCheck.rows[0].status !== 'Aktif') {
+      return res.status(401).json({ error: 'Akun tidak aktif atau tidak ditemukan.' });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: userCheck.rows[0].id,
+        name: userCheck.rows[0].nama,
+        role: userCheck.rows[0].role
+      }
+    });
+  } catch (err) {
+    console.error('Verify token error:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan saat memverifikasi sesi.' });
   }
 });
 
@@ -2547,13 +2572,13 @@ app.get('/api/search', async (req, res) => {
   try {
     // Search Users
     const users = await pool.query(
-      "SELECT id, nama as name, 'User' as type, 'users' as page, status FROM users WHERE nama ILIKE $1 OR email ILIKE $1 LIMIT 3", 
+      "SELECT id, nama as name, 'User' as type, 'manajemen-user' as page, status FROM users WHERE nama ILIKE $1 OR email ILIKE $1 LIMIT 3", 
       [term]
     );
     
     // Search Rooms
     const rooms = await pool.query(
-      `SELECT r.id, r.name, 'Room' as type, 'rooms' as page, 
+      `SELECT r.id, r.name, 'Room' as type, 'ruangan' as page, 
        CASE WHEN EXISTS (
          SELECT 1 FROM bookings b 
          JOIN booking_schedules bs ON b.id = bs.booking_id 
@@ -2567,7 +2592,7 @@ app.get('/api/search', async (req, res) => {
     
     // Search Inventory
     const inventory = await pool.query(
-      "SELECT id, nama as name, 'Inventory' as type, 'inventory' as page, CASE WHEN is_available THEN 'Tersedia' ELSE 'Dipinjam' END as status FROM inventory WHERE nama ILIKE $1 OR uksw_code ILIKE $1 LIMIT 3", 
+      "SELECT id, nama as name, 'Inventory' as type, 'inventaris' as page, CASE WHEN is_available THEN 'Tersedia' ELSE 'Dipinjam' END as status FROM inventory WHERE nama ILIKE $1 OR uksw_code ILIKE $1 LIMIT 3", 
       [term]
     );
 

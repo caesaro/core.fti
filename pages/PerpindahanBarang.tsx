@@ -1,5 +1,5 @@
 // Page: ItemMovements (Perpindahan Barang)
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Role, ItemMovement, Equipment } from '../types';
 import { Search, Filter, Plus, X, ArrowRightLeft, Box, Calendar, MapPin, FileText, Eye, Save, RotateCcw, ArrowUpRight, ArrowDownLeft, Hand, ChevronLeft, ChevronRight, QrCode, Loader2, Trash2, Edit } from 'lucide-react';
 import { api } from '../services/api';
@@ -48,6 +48,9 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
+
+  // Menyimpan data scan terakhir untuk mencegah spam
+  const lastScannedRef = useRef<{text: string, time: number}>({ text: '', time: 0 });
 
   useEffect(() => {
     // Initial data fetch
@@ -303,18 +306,25 @@ const ItemMovements: React.FC<ItemMovementsProps> = ({ role, showToast }) => {
   };
 
   const handleScanSuccess = (decodedText: string) => {
+    const now = Date.now();
+    // Abaikan jika QR yang sama discan dalam waktu kurang dari 3 detik
+    if (lastScannedRef.current.text === decodedText && now - lastScannedRef.current.time < 3000) {
+      return;
+    }
+    lastScannedRef.current = { text: decodedText, time: now };
+
     const item = equipment.find(e => e.id === decodedText);
     if (item) {
-      setFormData(prev => {
-        const isDuplicate = prev.inventoryIds.some((id, idx) => 
-          id === decodedText && (scanningRowIndex === null || idx !== scanningRowIndex)
-        );
-        
-        if (isDuplicate) {
-          showToast("Barang sudah ada di daftar", "warning");
-          return prev;
-        }
+      const isDuplicate = formData.inventoryIds.some((id, idx) => 
+        id === decodedText && (scanningRowIndex === null || idx !== scanningRowIndex)
+      );
+      
+      if (isDuplicate) {
+        showToast("Barang sudah ada di daftar", "warning");
+        return;
+      }
 
+      setFormData(prev => {
         const newIds = [...prev.inventoryIds];
         if (scanningRowIndex !== null) {
           newIds[scanningRowIndex] = decodedText;

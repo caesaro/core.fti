@@ -460,10 +460,10 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                 <div className="grid grid-cols-1 gap-4">
                                     {shareConfig.time && (
                                         <div className="flex items-start">
-                                            <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg mr-3">
+                                            <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg mr-3 flex-shrink-0">
                                                 <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                                             </div>
-                                            <div className="w-full">
+                                            <div className="w-full mt-0.5">
                                                 <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">Waktu Pelaksanaan</p>
                                                     <div className="space-y-2">
                                                         {selectedGroup.uniqueSchedules.slice(0, 5).map((sch: any, idx: number) => (
@@ -485,16 +485,16 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                                     )}
                                     {shareConfig.location && (
                                         <div className="flex items-start">
-                                            <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded-lg mr-3">
+                                            <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded-lg mr-3 flex-shrink-0">
                                                 <MapPin className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                                             </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Lokasi</p>
-                                                <div className="flex flex-wrap gap-1 mt-1">
+                                            <div className="w-full mt-0.5">
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1.5">Lokasi</p>
+                                                <div className="flex flex-wrap gap-2">
                                                     {selectedGroup.roomIds.map(id => (
-                                                        <span key={id} className="text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                                                        <div key={id} className="inline-flex items-center justify-center text-sm font-bold leading-none text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-700">
                                                             {getRoomName(id)}
-                                                        </span>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
@@ -521,8 +521,8 @@ const Acara: React.FC<EventsProps> = ({ showToast, isDarkMode }) => {
                             )}
 
                             {(shareConfig.tech || shareConfig.needs) && (
-                                <div className="pt-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 -mx-8 px-8 pb-4 -mb-8 mt-2">
-                                    <div className="pt-4 space-y-3">
+                                <div className="pt-5 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 -mx-8 px-8 pb-4 -mb-8 mt-4">
+                                    <div className="space-y-3">
                                         {shareConfig.tech && selectedGroup.master.techSupportPicName && (
                                             <div>
                                                 <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1 flex items-center"><Wrench className="w-3 h-3 mr-1"/> PIC Teknis Laboran</p>

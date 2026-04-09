@@ -246,28 +246,28 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
                 value={stats.myBookings.length.toString()} 
                 icon={FileText} 
                 color="bg-blue-500" 
-                onClick={() => onNavigate?.('bookings')}
+            onClick={() => onNavigate?.('pemesanan-saya')}
             />
             <StatCard 
                 title="Menunggu" 
                 value={stats.myPending.toString()} 
                 icon={Clock} 
                 color="bg-yellow-500" 
-                onClick={() => onNavigate?.('bookings')}
+            onClick={() => onNavigate?.('pemesanan-saya')}
             />
             <StatCard 
                 title="Disetujui" 
                 value={stats.myApproved.toString()} 
                 icon={CheckCircle} 
                 color="bg-green-500" 
-                onClick={() => onNavigate?.('bookings')}
+            onClick={() => onNavigate?.('pemesanan-saya')}
             />
              <StatCard 
                 title="Ditolak" 
                 value={stats.myRejected.toString()} 
                 icon={XCircle} 
                 color="bg-red-500" 
-                onClick={() => onNavigate?.('bookings')}
+            onClick={() => onNavigate?.('pemesanan-saya')}
             />
         </div>
 
@@ -276,7 +276,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">Riwayat Pengajuan Terakhir</h3>
-                    <button onClick={() => onNavigate?.('bookings')} className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center">
+                <button onClick={() => onNavigate?.('pemesanan-saya')} className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center">
                         Lihat Semua <ArrowRight className="w-4 h-4 ml-1" />
                     </button>
                 </div>
@@ -307,9 +307,9 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             <div className="space-y-4">
                 <h3 className="font-bold text-gray-900 dark:text-white px-1">Akses Cepat</h3>
                 <div className="grid grid-cols-1 gap-4">
-                    <QuickActionCard title="Cari Ruangan" icon={Calendar} color="bg-blue-500" onClick={() => onNavigate?.('rooms')} description="Lihat daftar ruangan dan fasilitas." />
-                    <QuickActionCard title="Cek Jadwal Lab" icon={Clock} color="bg-purple-500" onClick={() => onNavigate?.('schedule')} description="Lihat ketersediaan ruangan." />
-                    <QuickActionCard title="Status Pemesanan" icon={FileText} color="bg-green-500" onClick={() => onNavigate?.('bookings')} description="Pantau status pengajuan Anda." />
+                <QuickActionCard title="Cari Ruangan" icon={Calendar} color="bg-blue-500" onClick={() => onNavigate?.('ruangan')} description="Lihat daftar ruangan dan fasilitas." />
+                <QuickActionCard title="Cek Jadwal Lab" icon={Clock} color="bg-purple-500" onClick={() => onNavigate?.('jadwal-ruang')} description="Lihat ketersediaan ruangan." />
+                <QuickActionCard title="Status Pemesanan" icon={FileText} color="bg-green-500" onClick={() => onNavigate?.('pemesanan-saya')} description="Pantau status pengajuan Anda." />
                 </div>
             </div>
         </div>
@@ -339,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             icon={Clock} 
             color="bg-yellow-500" 
             subtext={`${stats.totalBookings} Total Pengajuan`}
-            onClick={() => onNavigate?.('manage-bookings')}
+        onClick={() => onNavigate?.('pesanan-ruang')}
         />
         <StatCard 
             title="Peminjaman Barang" 
@@ -347,7 +347,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             icon={Package} 
             color="bg-blue-500" 
             subtext="Sedang dipinjam"
-            onClick={() => onNavigate?.('loans')}
+        onClick={() => onNavigate?.('peminjaman-barang')}
         />
         <StatCard 
             title="Kondisi Inventaris" 
@@ -355,15 +355,15 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
             icon={AlertTriangle} 
             color={stats.damagedEquipment > 0 ? "bg-red-500" : "bg-green-500"} 
             subtext="Barang Rusak / Bermasalah"
-            onClick={() => onNavigate?.('inventory')}
+        onClick={() => onNavigate?.('inventaris')}
         />
         <StatCard 
-            title="Total Pengguna" 
+            title="Total User" 
             value={stats.totalUsers.toString()} 
             icon={Users} 
             color="bg-purple-500" 
             subtext="Mahasiswa & Dosen"
-            onClick={() => onNavigate?.('users')}
+        onClick={() => onNavigate?.('manajemen-user')}
         />
       </div>
 
@@ -470,7 +470,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">Pengajuan Terbaru</h3>
-                  <button onClick={() => onNavigate?.('manage-bookings')} className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center">
+              <button onClick={() => onNavigate?.('pesanan-ruang')} className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center">
                       Lihat Semua <ArrowRight className="w-4 h-4 ml-1" />
                   </button>
               </div>
@@ -501,10 +501,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate }) => {
 
           {/* Quick Actions Grid */}
           <div className="grid grid-cols-2 gap-4 content-start">
-              <QuickActionCard title="Verifikasi Jadwal" icon={CheckCircle} color="bg-green-500" onClick={() => onNavigate?.('manage-bookings')} description="Setujui atau tolak pengajuan ruangan." />
-              <QuickActionCard title="Input Peminjaman" icon={Box} color="bg-blue-500" onClick={() => onNavigate?.('loans')} description="Catat peminjaman barang baru." />
-              <QuickActionCard title="Tambah User" icon={Users} color="bg-purple-500" onClick={() => onNavigate?.('users')} description="Registrasi pengguna baru." />
-              <QuickActionCard title="Laporan Inventaris" icon={FileText} color="bg-orange-500" onClick={() => onNavigate?.('inventory')} description="Cek stok dan kondisi aset." />
+          <QuickActionCard title="Verifikasi Jadwal" icon={CheckCircle} color="bg-green-500" onClick={() => onNavigate?.('pesanan-ruang')} description="Setujui atau tolak pengajuan ruangan." />
+          <QuickActionCard title="Input Peminjaman" icon={Box} color="bg-blue-500" onClick={() => onNavigate?.('peminjaman-barang')} description="Catat peminjaman barang baru." />
+          <QuickActionCard title="Tambah User" icon={Users} color="bg-purple-500" onClick={() => onNavigate?.('manajemen-user')} description="Registrasi pengguna baru." />
+          <QuickActionCard title="Laporan Inventaris" icon={FileText} color="bg-orange-500" onClick={() => onNavigate?.('inventaris')} description="Cek stok dan kondisi aset." />
           </div>
       </div>
     </div>

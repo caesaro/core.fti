@@ -25,7 +25,7 @@ declare global {
 }
 
 interface LoginProps {
-  onLogin: (role: Role, userName?: string) => void;
+  onLogin: (role: Role, userName?: string, rememberMe?: boolean) => void;
   showToast: (
     message: string | React.ReactNode,
     type: "success" | "error" | "info" | "warning",
@@ -96,7 +96,7 @@ const Login: React.FC<LoginProps> = ({
           setSsoEnabled(data.enabled ?? true);
         }
       } catch (err) {
-        console.error("Failed to fetch SSO config:", err);
+        // Silent fail
       }
     };
     fetchSsoConfig();
@@ -138,9 +138,10 @@ const Login: React.FC<LoginProps> = ({
     return { label: "Strong", color: "text-green-500" };
   };
 
+  const getActiveStorage = () => rememberMe ? localStorage : sessionStorage;
+
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Password boleh kosong jika dalam mode reset (admin reset password jadi NULL)
     if (!formData.email) {
       showToast("Mohon isi email.", "error");
       return;
@@ -149,16 +150,14 @@ const Login: React.FC<LoginProps> = ({
     setIsLoading(true);
 
     try {
-      // Get stored deviceId or generate new one
       let deviceId = getDeviceId();
       if (!localStorage.getItem("deviceId")) localStorage.setItem("deviceId", deviceId);
 
-      // Menggunakan wrapper 'api' (Header & URL otomatis dihandle)
       const response = await api("/api/login", {
         method: "POST",
         data: {
           email: formData.email,
-          password: formData.password || "", // Kirim string kosong jika user tidak isi password
+          password: formData.password || "",
           rememberMe: rememberMe,
           deviceId: deviceId,
         },
@@ -166,39 +165,33 @@ const Login: React.FC<LoginProps> = ({
 
       const data = await response.json();
 
-      // Cek apakah user harus reset password (dari Admin)
       if (data.resetRequired) {
         showToast(
           `Halo ${data.name}, Admin telah mereset akun Anda. Silakan buat password baru.`,
           "info",
         );
-        // Simpan email dari response agar sesuai dengan yang ada di database
         setFormData((prev) => ({ ...prev, email: data.email }));
         setView("set-password");
         return;
       }
 
       if (response.ok && data.success) {
-        // Simpan User ID dan Nama untuk keperluan Profile
-        localStorage.setItem("authToken", data.token); // Simpan token
-        localStorage.setItem("userId", data.id);
-        localStorage.setItem("userName", data.name);
+        const activeStorage = getActiveStorage();
+        activeStorage.setItem("authToken", data.token);
+        activeStorage.setItem("userId", data.id);
+        activeStorage.setItem("userName", data.name);
 
-        // Store device ID from response
         if (data.deviceId) {
           localStorage.setItem("deviceId", data.deviceId);
         }
 
-        // Handle "Remember Me" - Store refresh token if provided
-        if (rememberMe && data.isRememberMe) {
+        if (data.refreshToken) {
+          activeStorage.setItem("refreshToken", data.refreshToken);
+        }
+        if (rememberMe) {
           localStorage.setItem("rememberedEmail", formData.email);
-          // In production, consider encrypting this
-          if (data.refreshToken) {
-            sessionStorage.setItem("refreshToken", data.refreshToken);
-          }
         } else {
           localStorage.removeItem("rememberedEmail");
-          sessionStorage.removeItem("refreshToken");
         }
 
         if (data.profileIncomplete) {
@@ -208,12 +201,11 @@ const Login: React.FC<LoginProps> = ({
           );
         }
 
-        onLogin(data.role as Role, data.name);
+        onLogin(data.role as Role, data.name, rememberMe);
       } else {
         showToast(data.error || "Login gagal.", "error");
       }
     } catch (error) {
-      console.error("Login Error:", error);
       showToast("Gagal terhubung ke server.", "error");
     } finally {
       setIsLoading(false);
@@ -266,7 +258,6 @@ const Login: React.FC<LoginProps> = ({
         showToast(data.error || "Registrasi gagal.", "error");
       }
     } catch (error) {
-      console.error("Register Error:", error);
       showToast("Gagal terhubung ke server.", "error");
     } finally {
       setIsLoading(false);
@@ -394,22 +385,20 @@ const Login: React.FC<LoginProps> = ({
             const data = await res.json();
 
             if (res.ok && data.success) {
-               localStorage.setItem("authToken", data.token);
-               localStorage.setItem("userId", data.id);
-               localStorage.setItem("userName", data.name);
+               const activeStorage = getActiveStorage();
+               activeStorage.setItem("authToken", data.token);
+               activeStorage.setItem("userId", data.id);
+               activeStorage.setItem("userName", data.name);
+               
                if (!localStorage.getItem("deviceId")) localStorage.setItem("deviceId", deviceId);
                
                showToast(`Login berhasil sebagai ${data.name}`, "success");
-               // Pass both role and userName to handleLogin to fix race condition
-               onLogin(data.role as Role, data.name);
+               onLogin(data.role as Role, data.name, rememberMe);
             } else {
-               // Show more detailed error message if available
                const errorMessage = data.details ? `${data.error} - ${data.details}` : data.error;
                showToast(errorMessage || "Gagal login dengan Google.", "error");
-               console.error("Google SSO Error:", data);
             }
           } catch (err) {
-            console.error("Google Backend Error:", err);
             showToast("Gagal memproses login Google di server.", "error");
           }
         }

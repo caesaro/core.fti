@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loan, Equipment, LabStaff, Role, ToastMessage } from '../types';
 import { Search, Filter, Plus, Check, X, Clock, Box, User, Save, Trash2, CreditCard, Eye, Calendar, QrCode, MapPin, Loader2, Edit } from 'lucide-react';
 import { api } from '../services/api';
@@ -8,7 +8,6 @@ import { formatDateID } from '../src/utils/formatters';
 import SearchBar from '../components/SearchBar';
 import Pagination from '../components/Pagination';
 import { usePagination } from '../hooks/usePagination';
-import ToastContainer from '../components/ToastContainer';
 
 interface FormData {
   equipmentIds: string[];
@@ -35,36 +34,17 @@ interface SelectedGroup {
   loans: Loan[];
 }
 
-const PeminjamanBarang: React.FC = () => {
+interface PeminjamanBarangProps {
+  showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning', sticky?: boolean) => void;
+}
+
+const PeminjamanBarang: React.FC<PeminjamanBarangProps> = ({ showToast }) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [activeStaff, setActiveStaff] = useState<LabStaff[]>([]);
-  const [toasts, setToasts] = useState<any[]>([]);
-  const [toastIdCounter, setToastIdCounter] = useState(0);
 
   const [filter, setFilter] = useState('All');
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning', sticky = false) => {
-    const id = `toast-${toastIdCounter}`;
-  const newToast: any = {
-      id,
-      message,
-      type,
-      sticky
-    };
-    setToasts(prev => [...prev, newToast]);
-    setToastIdCounter(prev => prev + 1);
-
-    if (!sticky) {
-      setTimeout(() => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-      }, 5000);
-    }
-  }, [toastIdCounter]);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -93,6 +73,9 @@ const PeminjamanBarang: React.FC = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
 
+  // Menyimpan data scan terakhir untuk mencegah spam
+  const lastScannedRef = useRef<{text: string, time: number}>({ text: '', time: 0 });
+
   const handleCloseScanner = () => {
     setIsScannerOpen(false);
     setScanningRowIndex(null);
@@ -100,6 +83,13 @@ const PeminjamanBarang: React.FC = () => {
 
   // Scanner success handler - handles both global and per-row scanning
   const onScanSuccess = (decodedText: string) => {
+    const now = Date.now();
+    // Abaikan jika QR yang sama discan dalam waktu kurang dari 3 detik
+    if (lastScannedRef.current.text === decodedText && now - lastScannedRef.current.time < 3000) {
+      return;
+    }
+    lastScannedRef.current = { text: decodedText, time: now };
+
     const item = equipment.find(e => e.id === decodedText);
     
     if (item) {
@@ -108,16 +98,16 @@ const PeminjamanBarang: React.FC = () => {
         return;
       }
 
-      setFormData(prev => {
-        const isDuplicate = prev.equipmentIds.some((id, idx) => 
-          id === decodedText && (scanningRowIndex === null || idx !== scanningRowIndex)
-        );
+      const isDuplicate = formData.equipmentIds.some((id, idx) => 
+        id === decodedText && (scanningRowIndex === null || idx !== scanningRowIndex)
+      );
 
-        if (isDuplicate) {
-          showToast("Barang sudah ada di daftar", "warning");
-          return prev;
-        }
-        
+      if (isDuplicate) {
+        showToast("Barang sudah ada di daftar", "warning");
+        return;
+      }
+
+      setFormData(prev => {
         const newIds = [...prev.equipmentIds];
 
         if (scanningRowIndex !== null) {
@@ -129,10 +119,9 @@ const PeminjamanBarang: React.FC = () => {
             newIds.push(decodedText);
           }
         }
-
-        showToast(`Ditambahkan: ${item.name}`, "success");
         return { ...prev, equipmentIds: newIds };
       });
+      showToast(`Ditambahkan: ${item.name}`, "success");
     } else {
       showToast(`ID ${decodedText} tidak ditemukan`, "error");
     }
@@ -485,7 +474,6 @@ const PeminjamanBarang: React.FC = () => {
 
   return (
     <>
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
       <div className="space-y-6"> 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

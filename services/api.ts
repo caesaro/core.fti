@@ -1,26 +1,30 @@
 import { Loan, Equipment, LabStaff } from '../types';
+
+interface ApiRequest extends RequestInit {
+  data?: Record<string, unknown> | Equipment | Loan | LabStaff | any;
+}
 import { API_BASE_URL } from '../config';
 
-// Dapatkan Base URL secara dinamis saat runtime
-const getDynamicBaseUrl = () => {
-  if (import.meta.env.MODE === 'production') {
-    // Jika web diakses menggunakan HTTPS (SSL), jangan paksa gunakan port 5000
-    // Biarkan Nginx sebagai Reverse Proxy yang merutekan /api ke localhost:5000
-    if (window.location.protocol === 'https:') {
-      return window.location.origin; 
-    }
-    return `${window.location.protocol}//${window.location.hostname}:5000`;
-  }
-  return API_BASE_URL;
+// State untuk mengelola Interceptor dan Queue Request
+let isRefreshing = false;
+let refreshSubscribers: ((token: string | null) => void)[] = [];
+
+const subscribeTokenRefresh = (cb: (token: string | null) => void) => {
+  refreshSubscribers.push(cb);
 };
 
-export const api = async (endpoint: string, options: RequestInit & { data?: any } = {}) => {
+const onRefreshed = (token: string | null) => {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+};
+
+export const api = async (endpoint: string, options: ApiRequest = {}) => {
   // Pastikan format endpoint selalu valid (diawali garis miring)
   const formattedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${getDynamicBaseUrl()}${formattedEndpoint}`;
+  const url = `${API_BASE_URL}${formattedEndpoint}`;
   
-  // Mengambil token JWT hasil login dari localStorage
-  const token = localStorage.getItem('authToken');
+  // Mengambil token JWT hasil login dari sessionStorage atau localStorage
+  const token = sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
   const customHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -45,10 +49,69 @@ export const api = async (endpoint: string, options: RequestInit & { data?: any 
   }
 
   try {
-    const response = await fetch(url, config);
+    let response = await fetch(url, config);
+
+    // --- INTERCEPTOR: Handle 401 Unauthorized (Token Expired) ---
+    if (response.status === 401 && endpoint !== '/api/auth/refresh' && endpoint !== '/api/login') {
+      const refreshToken = localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+      const deviceId = localStorage.getItem('deviceId');
+
+      // Jika user memilih "Remember Me", maka refreshToken & deviceId tersedia
+      if (refreshToken && deviceId) {
+        if (!isRefreshing) {
+          isRefreshing = true;
+          try {
+            const refreshRes = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken, deviceId })
+            });
+
+            if (refreshRes.ok) {
+              const data = await refreshRes.json();
+              if (data.success && data.token) {
+            // Simpan token baru ke storage yang sedang aktif
+            if (sessionStorage.getItem('authToken')) {
+              sessionStorage.setItem('authToken', data.token);
+            } else {
+              localStorage.setItem('authToken', data.token);
+            }
+                onRefreshed(data.token);
+              } else {
+                onRefreshed(null); // Gagal refresh, session invalid
+              }
+            } else {
+              onRefreshed(null);
+            }
+          } catch (refreshErr) {
+            onRefreshed(null);
+          } finally {
+            isRefreshing = false;
+          }
+        }
+
+        // Tahan request yang gagal ini, tunggu sampai proses refresh selesai
+        return new Promise<Response>((resolve) => {
+          subscribeTokenRefresh((newToken: string | null) => {
+            if (newToken) {
+              // Jika berhasil refresh, ulangi request dengan header token baru
+              const newHeaders = {
+                ...config.headers,
+                'Authorization': `Bearer ${newToken}`
+              };
+              resolve(fetch(url, { ...config, headers: newHeaders }));
+            } else {
+              // Jika gagal refresh, teruskan error 401 aslinya ke halaman
+              resolve(response);
+            }
+          });
+        });
+      }
+    }
+    // --- END INTERCEPTOR ---
+
     return response;
   } catch (error) {
-    console.error(`API Error [${formattedEndpoint}]:`, error);
     throw error;
   }
 };

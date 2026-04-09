@@ -747,7 +747,7 @@ const handleEdit = async (room: Room) => {
   const handleBackToList = () => {
     const returnToLaboran = localStorage.getItem('returnToLaboranId');
     if (returnToLaboran && onNavigate) {
-        onNavigate('laboran-management');
+        onNavigate('manajemen-laboran');
     } else {
         setViewMode('list');
     }
@@ -1243,7 +1243,7 @@ const handleEdit = async (room: Room) => {
                 onSuccess={() => {
                     showToast("Permohonan berhasil dikirim!", "success");
                     if (canManage && onNavigate) {
-                        onNavigate('manage-bookings');
+                    onNavigate('pesanan-ruang');
                     } else {
                         setViewMode('detail');
                     }

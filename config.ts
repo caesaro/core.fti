@@ -1,11 +1,11 @@
 // Konfigurasi Global Aplikasi
-// Menggunakan environment variables untuk konfigurasi yang fleksibel
+export const APP_VERSION = "1.7.8";
+export const APP_NAME = "CORE.FTI";
+export const APP_FULL_NAME = "Campus Operational Resource Environment";
+export const INSTITUTION_NAME = "Fakultas Teknologi Informasi - UKSW";
 
-// API Base URL - fallback ke nilai default jika tidak ada env variable
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:5000`;
-
-// App Info - dari environment variables
-export const APP_NAME = import.meta.env.VITE_APP_NAME || 'CORE.FTI';
-export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.5.3';
-export const INSTITUTION_NAME = import.meta.env.VITE_INSTITUTION_NAME || 'Fakultas Teknologi Informasi - UKSW';
-export const INSTITUTION_URL = import.meta.env.VITE_INSTITUTION_URL || 'https://fti.uksw.edu';
+// Logika API URL Dinamis:
+// 1. Gunakan nilai dari .env jika ada
+// 2. Di Production, gunakan string kosong "" (browser otomatis pakai domain saat ini)
+// 3. Di Development, gunakan localhost:5000
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:5000");

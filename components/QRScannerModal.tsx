@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, QrCode, Loader2, AlertCircle, Camera, Upload } from 'lucide-react';
+import { X, QrCode, Loader2, AlertCircle } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 
 interface QRScannerModalProps {
@@ -21,8 +21,12 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const [error, setError] = useState('');
   const [hasCamPermission, setHasCamPermission] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Menyimpan callback terbaru ke dalam ref agar tidak memicu re-render
+  const callbacksRef = useRef({ onScanSuccess, onClose, closeOnSuccess });
+  useEffect(() => {
+    callbacksRef.current = { onScanSuccess, onClose, closeOnSuccess };
+  }, [onScanSuccess, onClose, closeOnSuccess]);
 
   const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
@@ -43,10 +47,11 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
   // Close handler - FORCE camera stop
   const handleClose = useCallback(async () => {
     await stopScanner();
-    onClose();
-  }, [stopScanner, onClose]);
+    callbacksRef.current.onClose();
+  }, [stopScanner]);
 
   const startScanner = useCallback(async () => {
+    if (scannerRef.current) return; // Mencegah inisialisasi ganda
     try {
       setError('');
       setIsScanning(true);
@@ -71,8 +76,8 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
           disableFlip: false
         },
         (decodedText: string) => {
-          onScanSuccess(decodedText);
-          if (closeOnSuccess) {
+          callbacksRef.current.onScanSuccess(decodedText);
+          if (callbacksRef.current.closeOnSuccess) {
             handleClose();
           }
         },
@@ -83,32 +88,20 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
         if (err?.name === 'NotAllowedError') {
           setError('Camera access denied. Allow in browser settings.');
         } else {
-          setError('Failed to start scanner: ' + err?.message || 'Unknown error');
+          setError('Failed to start scanner: ' + (err?.message || 'Unknown error'));
         }
         setHasCamPermission(false);
+        scannerRef.current = null;
       });
       
       setHasCamPermission(true);
     } catch (err: any) {
       setError(err.message || 'Failed to initialize scanner');
       console.error('Scanner init error:', err);
+      scannerRef.current = null;
     }
-  }, [onScanSuccess, closeOnSuccess, handleClose]);
+  }, [handleClose]);
 
-  const handleImageUpload = useCallback((file: File) => {
-    if (!scannerRef.current) return;
-    
-    scannerRef.current.scanFile(file, true)
-      .then(decodedText => {
-        onScanSuccess(decodedText);
-        if (closeOnSuccess) {
-          handleClose();
-        }
-      })
-      .catch(err => {
-        setError('No QR code found in image');
-      });
-  }, [onScanSuccess, closeOnSuccess, handleClose]);
 
   // Lifecycle
   useEffect(() => {
@@ -193,27 +186,16 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={startScanner}
-                    className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all"
+                    className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all text-sm"
                   >
-                    Coba Kamera Lagi
+                    Coba Lagi
                   </button>
-                  <label className="flex-1 px-6 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 transition-colors cursor-pointer bg-white dark:bg-gray-800 flex flex-col items-center justify-center text-sm font-medium">
-                    <Camera className="w-5 h-5 mb-1 text-gray-500" />
-                    Upload Foto
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handleImageUpload(file);
-                          e.target.value = '';
-                        }
-                      }}
-                      className="hidden"
-                    />
-                  </label>
+                  <button
+                    onClick={handleClose}
+                    className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all text-sm"
+                  >
+                    Input Manual
+                  </button>
                 </div>
               </div>
             </div>
@@ -230,34 +212,6 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900/50 flex items-center gap-3">
-          {error && (
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
-                <Upload className="w-4 h-4 mr-1" />
-                Upload Gambar QR
-              </label>
-              <label className="w-full p-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 transition-colors cursor-pointer bg-white dark:bg-gray-800 flex items-center justify-center">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      handleImageUpload(file);
-                      e.target.value = '';
-                    }
-                  }}
-                  className="hidden"
-                />
-                <div className="text-center text-sm">
-                  <Camera className="w-6 h-6 mx-auto mb-1 text-gray-500" />
-                  <p className="font-medium text-gray-700 dark:text-gray-300">Klik untuk upload foto QR</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">PNG, JPG hingga 5MB</p>
-                </div>
-              </label>
-            </div>
-          )}
           <button
             onClick={handleClose}
             className="px-6 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors ml-auto"

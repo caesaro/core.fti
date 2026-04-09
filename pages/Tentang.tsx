@@ -1,5 +1,6 @@
 import React from 'react';
 import { Info, Users, Code, Mail, Phone, MapPin, ExternalLink, Github, Linkedin, Twitter, Heart } from 'lucide-react';
+import { APP_VERSION, APP_NAME, APP_FULL_NAME } from '../config';
 
 const Tentang: React.FC = () => {
   return (
@@ -7,7 +8,7 @@ const Tentang: React.FC = () => {
       {/* Page Header */}
       <div className="text-center py-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Tentang</h1>
-        <p className="text-gray-500 dark:text-gray-400">Kenal lebih dekat dengan CORE.FTI dan tim di baliknya</p>
+        <p className="text-gray-500 dark:text-gray-400">Kenal lebih dekat dengan {APP_NAME} dan tim di baliknya</p>
       </div>
 
       {/* Section 1: About the Project */}
@@ -21,9 +22,9 @@ const Tentang: React.FC = () => {
         <div className="p-6">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">CORE.FTI</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">{APP_NAME}</h3>
               <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                <span className="font-bold">CORE.FTI</span> (Campus Operational Resource Environment) 
+                <span className="font-bold">{APP_NAME}</span> ({APP_FULL_NAME}) 
                 adalah sistem manajemen resources dan fasilitas dari Laboratorium Fakultas Teknologi Informasi 
                 UKSW. Sistem ini dirancang untuk memudahkan pengelolaan peminjaman ruangan, peralatan, 
                 serta penjadwalan kegiatan di lingkungan FTI UKSW.
@@ -36,8 +37,8 @@ const Tentang: React.FC = () => {
             </div>
             <div className="md:w-1/3 flex flex-col items-center justify-center">
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 text-center w-full">
-                <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-1">CORE.FTI</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">Versi 1.5.3</div>
+                <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-1">{APP_NAME}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">Versi {APP_VERSION}</div>
                 <div className="mt-3 inline-flex items-center px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-sm font-medium">
                   <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
                   Sistem Aktif
@@ -160,7 +161,7 @@ const Tentang: React.FC = () => {
         </div>
         <div className="p-6">
           <p className="text-gray-600 dark:text-gray-300 mb-6">
-            CORE.FTI dikembangkan oleh tim laboran mahasiswa yang sedang melakukan proyek untuk internal Sarpras. 
+            {APP_NAME} dikembangkan oleh tim laboran mahasiswa yang sedang melakukan proyek untuk internal Sarpras. 
             Kami berkomitmen untuk terus mengembangkan dan menyempurnakan sistem ini demi kenyamanan 
             seluruh civitas akademika FTI UKSW.
           </p>
@@ -181,7 +182,7 @@ const Tentang: React.FC = () => {
               </div>
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                  Bertanggung jawab penuh dalam pengembangan sistem CORE.FTI dari awal hingga akhir.
+                  Bertanggung jawab penuh dalam pengembangan sistem {APP_NAME} dari awal hingga akhir.
                 </p>
                 <div className="flex space-x-3">
                   <a 
@@ -266,4 +267,3 @@ const Tentang: React.FC = () => {
 };
 
 export default Tentang;
-

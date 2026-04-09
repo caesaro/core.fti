@@ -526,15 +526,15 @@ const Profile: React.FC<ProfileProps> = ({ role, showToast, onNavigate }) => {
                   <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{stats.unreadNotifications}</span>
                 )}
               </button>
-              <button 
-                onClick={() => onNavigate?.('bookings')}
+            <button 
+              onClick={() => onNavigate?.('pemesanan-saya')}
                 className="w-full flex items-center p-4 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-xl transition-all hover:scale-[1.02] group"
               >
                 <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400 mr-3" />
                 <span className="text-sm font-medium text-purple-900 dark:text-purple-300 group-hover:text-purple-700 dark:group-hover:text-purple-200">Riwayat Peminjaman</span>
               </button>
               <button 
-                onClick={() => onNavigate?.('rooms')}
+              onClick={() => onNavigate?.('ruangan')}
                 className="w-full flex items-center p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-xl transition-all hover:scale-[1.02] group"
               >
                 <Building className="w-5 h-5 text-green-600 dark:text-green-400 mr-3" />

@@ -6,27 +6,63 @@ import Toast from './components/Toast';
 import LoadingScreen from './components/LoadingScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 import { api } from './services/api';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 
-// Lazy load all pages for better performance
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Ruangan = lazy(() => import('./pages/Ruangan'));
-const JadwalRuang = lazy(() => import('./pages/JadwalRuang'));
-const PeminjamanBarang = lazy(() => import('./pages/PeminjamanBarang'));
-const Acara = lazy(() => import('./pages/Acara'));
-const ManajemenLaboran = lazy(() => import('./pages/ManajemenLaboran'));
-const ManajemenPKL = lazy(() => import('./pages/ManajemenPKL'));
-const Inventaris = lazy(() => import('./pages/Inventaris'));
-const PerpindahanBarang = lazy(() => import('./pages/PerpindahanBarang'));
-const ManajemenUser = lazy(() => import('./pages/ManajemenUser'));
-const PesananRuang = lazy(() => import('./pages/PesananRuang'));
-const PemesananSaya = lazy(() => import('./pages/PemesananSaya'));
-const Profile = lazy(() => import('./pages/Profile'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Login = lazy(() => import('./pages/Login'));
-const Maintenance = lazy(() => import('./pages/Maintenance'));
-const JadwalKuliah = lazy(() => import('./pages/JadwalKuliah'));
-const ManajemenSpesifikasi = lazy(() => import('./pages/ManajemenSpesifikasi'));
-const Tentang = lazy(() => import('./pages/Tentang'));
+import { APP_FULL_NAME } from './config';
+
+// Helper fungsi untuk membersihkan cache PWA (Service Worker) sebelum reload
+const clearCacheAndReload = async () => {
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const registration of registrations) {
+      await registration.unregister();
+    }
+  }
+  if ('caches' in window) {
+    const cacheNames = await caches.keys();
+    for (const name of cacheNames) {
+      await caches.delete(name);
+    }
+  }
+  window.location.reload();
+};
+
+// 1. Helper wrapper untuk menangkap Error Chunk saat deploy versi baru
+const lazyWithReload = (componentImport: () => Promise<any>) => {
+  return lazy(async () => {
+    try {
+      return await componentImport();
+    } catch (error) {
+      console.error('Versi baru mendeteksi perubahan file:', error);
+      if (window.confirm("Versi baru aplikasi tersedia. Halaman perlu dimuat ulang. Lanjutkan?")) {
+        clearCacheAndReload();
+      }
+      return Promise.reject(error);
+    }
+  });
+};
+
+// Lazy load all pages with reload wrapper
+const Dashboard = lazyWithReload(() => import('./pages/Dashboard'));
+const Ruangan = lazyWithReload(() => import('./pages/Ruangan'));
+const JadwalRuang = lazyWithReload(() => import('./pages/JadwalRuang'));
+const PeminjamanBarang = lazyWithReload(() => import('./pages/PeminjamanBarang'));
+const Acara = lazyWithReload(() => import('./pages/Acara'));
+const ManajemenLaboran = lazyWithReload(() => import('./pages/ManajemenLaboran'));
+const ManajemenPKL = lazyWithReload(() => import('./pages/ManajemenPKL'));
+const Inventaris = lazyWithReload(() => import('./pages/Inventaris'));
+const PerpindahanBarang = lazyWithReload(() => import('./pages/PerpindahanBarang'));
+const ManajemenUser = lazyWithReload(() => import('./pages/ManajemenUser'));
+const PesananRuang = lazyWithReload(() => import('./pages/PesananRuang'));
+const PemesananSaya = lazyWithReload(() => import('./pages/PemesananSaya'));
+const Profile = lazyWithReload(() => import('./pages/Profile'));
+const Settings = lazyWithReload(() => import('./pages/Settings'));
+const Login = lazyWithReload(() => import('./pages/Login'));
+const Maintenance = lazyWithReload(() => import('./pages/Maintenance'));
+const JadwalKuliah = lazyWithReload(() => import('./pages/JadwalKuliah'));
+const ManajemenSpesifikasi = lazyWithReload(() => import('./pages/ManajemenSpesifikasi'));
+const Tentang = lazyWithReload(() => import('./pages/Tentang'));
+const NotFound = lazyWithReload(() => import('./pages/NotFound'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -35,11 +71,17 @@ const PageLoader = () => (
   </div>
 );
 
-const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('isAuthenticated') === 'true');
-  const [currentPage, setCurrentPage] = useState('dashboard');
-  const [currentRole, setCurrentRole] = useState<Role>(() => (localStorage.getItem('currentRole') as Role) || ('User' as Role));
-  const [userName, setUserName] = useState<string>(() => localStorage.getItem('userName') || 'User');
+const AppContent: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Helper fungsi untuk membaca storage (Prioritaskan Session, fallback ke Local)
+  const getStorageItem = (key: string) => sessionStorage.getItem(key) || localStorage.getItem(key);
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => getStorageItem('isAuthenticated') === 'true');
+  const currentPage = location.pathname.substring(1) || 'dashboard';
+  const [currentRole, setCurrentRole] = useState<Role>(() => (getStorageItem('currentRole') as Role) || ('User' as Role));
+  const [userName, setUserName] = useState<string>(() => getStorageItem('userName') || 'User');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('isSidebarCollapsed');
@@ -73,7 +115,6 @@ const App: React.FC = () => {
           setIsMaintenanceMode(data.enabled);
         }
       } catch (e) {
-        console.error("Gagal cek status maintenance", e);
         // Non-blocking: lanjutkan meskipun gagal
         setIsMaintenanceMode(false);
       }
@@ -91,7 +132,7 @@ const App: React.FC = () => {
         const res = await api('/api/notifications');
         if (res.ok) setNotifications(await res.json());
       } catch (e) {
-        console.error("Gagal mengambil notifikasi", e);
+        // Silent fail for notifications
       }
     };
 
@@ -101,9 +142,53 @@ const App: React.FC = () => {
       notifInterval = setInterval(fetchNotifications, 10000); // Cek lagi setiap 10 detik
     }
 
+    // 2. Polling Pengecekan Versi Baru (Cek setiap 15 menit)
+    let lastEtag = '';
+    const checkVersion = async () => {
+      if (!isAuthenticated) return;
+      try {
+        // Gunakan method HEAD agar hemat bandwidth (hanya mengambil HTTP Headers, bukan isi HTML)
+        const res = await fetch('/', { method: 'HEAD', cache: 'no-cache' });
+        const currentEtag = res.headers.get('etag') || res.headers.get('last-modified');
+        
+        if (lastEtag && currentEtag && lastEtag !== currentEtag) {
+          // Tampilkan Toast Peringatan jika ETag/Waktu Modifikasi berubah
+          showToast(
+            <div>
+              <p className="mb-2">Versi baru aplikasi tersedia. Harap muat ulang halaman.</p>
+              <button 
+                onClick={clearCacheAndReload} 
+                className="bg-black/10 hover:bg-black/20 text-current px-3 py-1.5 rounded-md text-xs font-bold transition-colors"
+              >
+                Refresh Sekarang
+              </button>
+            </div>, 
+            "warning", 
+            true
+          );
+        }
+        if (currentEtag) lastEtag = currentEtag;
+      } catch (e) {
+        // Abaikan jika network error / offline
+      }
+    };
+    
+    checkVersion();
+    const versionInterval = setInterval(checkVersion, 15 * 60 * 1000);
+
+    // 3. Pengecekan ekstra saat tab browser kembali aktif (Fokus di HP/Mobile)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkVersion();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       clearTimeout(timer);
       if (notifInterval) clearInterval(notifInterval);
+      clearInterval(versionInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Changed dependency to empty array - only run once on mount
@@ -127,43 +212,47 @@ const App: React.FC = () => {
     localStorage.setItem('isSidebarCollapsed', String(newState));
   };
 
-  const handleLogin = (role: Role, userNameFromLogin?: string) => {
+  const handleLogin = (role: Role, userNameFromLogin?: string, rememberMe: boolean = false) => {
     setIsLoading(true);
     setCurrentRole(role);
     
     // Use userName from parameter if provided, otherwise get from localStorage
     // This fixes the race condition where localStorage wasn't set yet
-    const userName = userNameFromLogin || localStorage.getItem('userName') || 'User';
+    const userName = userNameFromLogin || getStorageItem('userName') || 'User';
     setUserName(userName);
     
     setIsAuthenticated(true);
-    setCurrentPage('dashboard');
+    navigate('/dashboard');
     showToast('Selamat datang kembali!', 'success');
     
-    // Save to localStorage synchronously to ensure persistence
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('currentRole', role);
-    localStorage.setItem('userName', userName);
+    // Tentukan penyimpanan berdasarkan pilihan user
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('isAuthenticated', 'true');
+    storage.setItem('currentRole', role);
+    storage.setItem('userName', userName);
     setIsLoading(false);
+  };
+
+  const clearAllStorage = () => {
+    const keys = ['isAuthenticated', 'currentRole', 'userName', 'authToken', 'userId', 'refreshToken'];
+    keys.forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
   };
 
   const handleLogout = async () => {
     setIsLoading(true);
     try {
-      // Beri tahu backend untuk menghapus token dari database
       await api('/api/logout', { method: 'POST' });
     } catch (error) {
-      console.error("Gagal menghubungi server untuk logout, melanjutkan logout di sisi klien.", error);
+      // Continue client-side logout
     } finally {
-      // Selalu bersihkan data di client, apapun hasil dari server
       setIsAuthenticated(false);
       setCurrentRole('User' as Role);
       setUserName('User');
-      localStorage.removeItem('isAuthenticated');
-      localStorage.removeItem('currentRole');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userId');
+      clearAllStorage();
+      navigate('/login');
       setIsLoading(false);
     }
   };
@@ -222,6 +311,47 @@ const App: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  // Verifikasi Sesi ke Backend saat pertama kali dimuat
+  useEffect(() => {
+    const verifySession = async () => {
+      if (!isAuthenticated) return;
+      
+      const token = getStorageItem('authToken');
+      if (!token) {
+        handleLogout();
+        return;
+      }
+      
+      try {
+        const res = await api('/api/auth/verify');
+        if (!res.ok) {
+          // Jika token expired atau user tidak valid (status 401/403)
+          showToast('Sesi Anda tidak valid atau telah berakhir. Silakan login kembali.', 'warning', true);
+          handleLogout();
+        } else {
+          const data = await res.json();
+          if (data.success && data.user) {
+            const storage = sessionStorage.getItem('authToken') ? sessionStorage : localStorage;
+            // Sinkronkan data jika ada perubahan role/nama dari database admin
+            if (data.user.role !== currentRole) {
+              setCurrentRole(data.user.role);
+              storage.setItem('currentRole', data.user.role);
+            }
+            if (data.user.name !== userName) {
+              setUserName(data.user.name);
+              storage.setItem('userName', data.user.name);
+            }
+          }
+        }
+      } catch (error) {
+        // Silent: Don't force logout on network issues
+      }
+    };
+
+    verifySession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- SESSION TIMEOUT (AUTO LOGOUT) ---
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -256,133 +386,6 @@ const App: React.FC = () => {
   }, [isAuthenticated]);
 
 
-  const renderPage = () => {
-    const pageContent = (() => {
-      switch (currentPage) {
-        case 'dashboard':
-          return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
-        case 'schedule':
-          return <JadwalRuang role={currentRole} showToast={showToast} isDarkMode={isDarkMode} />;
-        case 'rooms':
-          return <Ruangan role={currentRole} isDarkMode={isDarkMode} onNavigate={setCurrentPage} showToast={showToast} />;
-        case 'events':
-          return <Acara showToast={showToast} isDarkMode={isDarkMode} />;
-        case 'loans':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <PeminjamanBarang/>
-            </ProtectedRoute>
-          );
-        case 'laboran-management':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <ManajemenLaboran onNavigate={setCurrentPage} showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'pkl-management':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <ManajemenPKL showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'inventory':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <Inventaris showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'item-movements':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <PerpindahanBarang role={currentRole} showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'users':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN]} 
-              onNavigate={setCurrentPage}
-            >
-              <ManajemenUser showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'bookings':
-          // Get dynamic user ID from localStorage
-          const currentUserId = localStorage.getItem('userId') || '';
-          return <PemesananSaya userId={currentUserId} showToast={showToast} />;
-        case 'manage-bookings':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <PesananRuang addNotification={addNotification} showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'profile':
-          return <Profile role={currentRole} showToast={showToast} onNavigate={setCurrentPage} />;
-case 'settings':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN]} 
-              onNavigate={setCurrentPage}
-            >
-              <Settings showToast={showToast} onNavigate={setCurrentPage} />
-            </ProtectedRoute>
-          );
-        case 'class-schedule':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <JadwalKuliah role={currentRole} showToast={showToast} />
-            </ProtectedRoute>
-          );
-case 'specs-management':
-          return (
-            <ProtectedRoute 
-              currentRole={currentRole} 
-              allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} 
-              onNavigate={setCurrentPage}
-            >
-              <ManajemenSpesifikasi role={currentRole} isDarkMode={isDarkMode} showToast={showToast} />
-            </ProtectedRoute>
-          );
-        case 'tentang':
-          return <Tentang />;
-        default:
-          return <Dashboard role={currentRole} onNavigate={setCurrentPage} />;
-      }
-    })();
-
-    // Wrap with Suspense for lazy loading
-    return <Suspense fallback={<PageLoader />}>{pageContent}</Suspense>;
-  };
 
   // Render Global Loader
   if (isLoading) {
@@ -394,26 +397,28 @@ case 'specs-management':
     return <Maintenance />;
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} transition-colors duration-200 font-sans`}>
-        <Suspense fallback={<LoadingScreen />}>
-          <Login 
-            onLogin={handleLogin} 
-            showToast={showToast} 
-            isDarkMode={isDarkMode} 
-            toggleDarkMode={toggleDarkMode}
-          />
-        </Suspense>
-        {/* Allow toasts even on login screen */}
-        <Toast toasts={toasts} removeToast={removeToast} isDarkMode={isDarkMode} />
-      </div>
-    );
-  }
-
   return (
-    <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200 font-sans print:bg-white`}>
-      <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible print:block">
+    <div className={`min-h-screen ${isDarkMode ? 'dark' : ''} bg-gray-50 dark:bg-gray-900 transition-colors duration-200 font-sans print:bg-white`}>
+      <Routes>
+        {/* Route Khusus Login (Tanpa Layout) */}
+        <Route path="/login" element={
+          !isAuthenticated ? (
+            <Suspense fallback={<LoadingScreen />}>
+              <Login 
+                onLogin={handleLogin} 
+                showToast={showToast} 
+                isDarkMode={isDarkMode} 
+                toggleDarkMode={toggleDarkMode}
+              />
+            </Suspense>
+          ) : (
+            <Navigate to="/dashboard" replace />
+          )
+        } />
+
+        <Route element={
+          isAuthenticated ? (
+            <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible print:block">
         
         {/* Mobile Sidebar Overlay */}
         {isSidebarOpen && (
@@ -427,7 +432,7 @@ case 'specs-management':
           currentRole={currentRole}
           currentPage={currentPage}
           onNavigate={(page) => {
-            setCurrentPage(page);
+            navigate(`/${page}`);
             setIsSidebarOpen(false);
           }}
           isOpen={isSidebarOpen}
@@ -448,22 +453,104 @@ case 'specs-management':
             onMarkAsRead={markNotificationAsRead}
             onMarkAllAsRead={markAllNotificationsAsRead}
             onClearAllNotifications={clearAllNotifications}
-            onNavigate={(page) => setCurrentPage(page)}
+            onNavigate={(page) => navigate(`/${page}`)}
           />
 
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 print:overflow-visible print:h-auto print:p-0 print:block flex flex-col">
-            <div className="flex-1">{renderPage()}</div>
+            <div className="flex-1 animate-fade-in-up transition-all duration-300" key={location.pathname}>
+              <Suspense fallback={<PageLoader />}>
+                <Outlet />
+              </Suspense>
+            </div>
             <footer className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center text-sm text-gray-500 dark:text-gray-400 print:hidden">
-              Campus Operational Resource Environment &copy; {new Date().getFullYear()} Sarana dan Prasarana FTI UKSW. All rights reserved.
+              {APP_FULL_NAME} &copy; {new Date().getFullYear()} Sarana dan Prasarana FTI UKSW. All rights reserved.
             </footer>
           </main>
         </div>
       </div>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard role={currentRole} onNavigate={(p: string) => navigate(`/${p}`)} />} />
+          <Route path="/jadwal-ruang" element={<JadwalRuang role={currentRole} showToast={showToast} isDarkMode={isDarkMode} />} />
+          <Route path="/ruangan" element={<Ruangan role={currentRole} isDarkMode={isDarkMode} onNavigate={(p: string) => navigate(`/${p}`)} showToast={showToast} />} />
+          <Route path="/acara" element={<Acara showToast={showToast} isDarkMode={isDarkMode} />} />
+          <Route path="/peminjaman-barang" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <PeminjamanBarang showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/manajemen-laboran" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <ManajemenLaboran onNavigate={(p: string) => navigate(`/${p}`)} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/manajemen-pkl" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <ManajemenPKL showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/inventaris" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <Inventaris showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/perpindahan-barang" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <PerpindahanBarang role={currentRole} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/manajemen-user" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <ManajemenUser showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/pemesanan-saya" element={<PemesananSaya userId={getStorageItem('userId') || ''} showToast={showToast} />} />
+          <Route path="/pesanan-ruang" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <PesananRuang addNotification={addNotification} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/profil" element={<Profile role={currentRole} showToast={showToast} onNavigate={(p: string) => navigate(`/${p}`)} />} />
+          <Route path="/pengaturan" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <Settings showToast={showToast} onNavigate={(p: string) => navigate(`/${p}`)} />
+            </ProtectedRoute>
+          } />
+          <Route path="/jadwal-kuliah" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <JadwalKuliah role={currentRole} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/manajemen-spesifikasi" element={
+            <ProtectedRoute currentRole={currentRole} allowedRoles={[Role.ADMIN, Role.LABORAN, 'Supervisor' as Role]} onNavigate={(p: string) => navigate(`/${p}`)}>
+              <ManajemenSpesifikasi role={currentRole} isDarkMode={isDarkMode} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          <Route path="/tentang" element={<Tentang />} />
+        </Route>
+        
+        <Route path="*" element={
+          <Suspense fallback={<PageLoader />}>
+            <NotFound />
+          </Suspense>
+        } />
+      </Routes>
 
       
       
       <Toast toasts={toasts} removeToast={removeToast} isDarkMode={isDarkMode} />
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 };
 

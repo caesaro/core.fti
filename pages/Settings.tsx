@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Database, Server, Globe, Save, RefreshCw, Eye, EyeOff, CheckCircle, AlertCircle, ShieldAlert, Power, Megaphone, Download, Upload, FileText, FileWarning, ChevronDown, ChevronUp, X, Check, Filter, Trash2, AlertTriangle, Info, CheckSquare, Square, Activity, Users, Package, Calendar, HardDrive, Clock, ExternalLink, Settings as SettingsIcon, LogIn } from 'lucide-react';
 import { api } from '../services/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { APP_VERSION, APP_NAME, APP_FULL_NAME, INSTITUTION_NAME } from '../config';
 
 interface SettingsProps {
   showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -502,14 +503,14 @@ const Settings: React.FC<SettingsProps> = ({ showToast, onNavigate }) => {
                     <Database className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <h4 className="text-xl font-bold text-gray-900 dark:text-white">CORE.FTI</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Campus Operational Resource Environment</p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">Versi 1.0.0</p>
+                  <h4 className="text-xl font-bold text-gray-900 dark:text-white">{APP_NAME}</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{APP_FULL_NAME}</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">Versi {APP_VERSION}</p>
                   </div>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                    <span className="font-medium">Institusi:</span> Fakultas Teknologi Informasi - UKSW
+                    <span className="font-medium">Institusi:</span> {INSTITUTION_NAME}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
                     <span className="font-medium">Database:</span> PostgreSQL (via .env)
@@ -586,19 +587,19 @@ const Settings: React.FC<SettingsProps> = ({ showToast, onNavigate }) => {
             </div>
             <div className="p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onClick={() => onNavigate?.('users')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <button onClick={() => onNavigate?.('manajemen-user')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   <Users className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-2" />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Manajemen User</span>
                 </button>
-                <button onClick={() => onNavigate?.('rooms')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <button onClick={() => onNavigate?.('ruangan')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   <Calendar className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2" />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Kelola Ruangan</span>
                 </button>
-                <button onClick={() => onNavigate?.('inventory')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <button onClick={() => onNavigate?.('inventaris')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   <Package className="w-8 h-8 text-green-600 dark:text-green-400 mb-2" />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Inventaris</span>
                 </button>
-                <button onClick={() => onNavigate?.('manage-bookings')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <button onClick={() => onNavigate?.('pesanan-ruang')} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   <Activity className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-2" />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Pemesanan</span>
                 </button>

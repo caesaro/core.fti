@@ -465,7 +465,7 @@ const LaboranManagement: React.FC<LaboranManagementProps> = ({ onNavigate, showT
                                      onClick={() => {
                                          localStorage.setItem('targetRoomId', room.id);
                                          localStorage.setItem('returnToLaboranId', viewingStaff.id);
-                                         if (onNavigate) onNavigate('rooms');
+                                     if (onNavigate) onNavigate('ruangan');
                                      }}
                                      className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-3 py-2 rounded-lg text-sm border border-blue-100 dark:border-blue-800 flex justify-between items-center cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
                                      title="Klik untuk melihat detail ruangan"
